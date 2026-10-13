@@ -14,13 +14,13 @@ from PyQt5.QtCore import QTimer, QEventLoop
 
 app = QApplication(sys.argv)
 
-from audio.config import Settings, load_settings, save_credentials
-from audio.capture import Capture, CaptureWorker, cursor_monitor_rect
-from audio.floating_window import FloatingWindow
-from audio.llm import stream_chunks, _CONNECTIONS
-from audio.widgets import StrokedText
-from audio import secret
-from audio import proxy as proxy_mod
+from cloudSyncG.config import Settings, load_settings, save_credentials
+from cloudSyncG.capture import Capture, CaptureWorker, cursor_monitor_rect
+from cloudSyncG.floating_window import FloatingWindow
+from cloudSyncG.llm import stream_chunks, _CONNECTIONS
+from cloudSyncG.widgets import StrokedText
+from cloudSyncG import secret
+from cloudSyncG import proxy as proxy_mod
 
 # 默认配置走本地代理，这里把代理起起来，让测试覆盖的是**默认路径**
 settings = load_settings()
@@ -147,7 +147,7 @@ check("force 立即写入", calls[-1] == "收尾")
 win.status.setText = orig
 
 print("\n=== 8. _cursor_pos 结构体提模块级 ===")
-from audio import floating_window as fw
+from cloudSyncG import floating_window as fw
 check("POINT 在模块级", hasattr(fw, "_POINT"))
 check("函数内不再定义结构体",
       "_POINT" not in fw.FloatingWindow._cursor_pos.__code__.co_consts)
@@ -163,7 +163,7 @@ check("调用开销微秒级", 0 < per < 100)
 print("\n=== 9. 死代码清理 ===")
 check("StrokedText._flags 已删", not hasattr(StrokedText, "_flags"))
 check("StrokedText.text_height 已删", not hasattr(StrokedText, "text_height"))
-from audio import widgets as wd
+from cloudSyncG import widgets as wd
 check("HoverButton.set_subtitle 已删", not hasattr(wd.HoverButton, "set_subtitle"))
 check("GREETING 已删", not hasattr(fw, "GREETING"))
 src = open(fw.__file__, encoding="utf-8").read()

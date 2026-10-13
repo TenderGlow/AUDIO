@@ -1,4 +1,4 @@
-"""程序入口：python main.py"""
+"""程序入口：python cloudSyncG-main.py"""
 from __future__ import annotations
 
 import sys
@@ -7,17 +7,17 @@ from PyQt5.QtCore import Qt, QThreadPool
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QApplication
 
-from audio.config import load_settings
-from audio.floating_window import FloatingWindow
-from audio.shutdown import write_pid_file, remove_pid_file
-from audio import proxy as proxy_mod
+from cloudSyncG.config import load_settings
+from cloudSyncG.floating_window import FloatingWindow
+from cloudSyncG.shutdown import write_pid_file, remove_pid_file
+from cloudSyncG import proxy as proxy_mod
 
 
 def main() -> int:
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     app = QApplication(sys.argv)
-    app.setApplicationName("Audio")
+    app.setApplicationName("cloudSyncG")
     app.setFont(QFont("Microsoft YaHei UI", 9))
     # 退出时最多等 2 秒让正在跑的流式请求收尾，避免线程被强杀导致崩溃
     app.aboutToQuit.connect(lambda: QThreadPool.globalInstance().waitForDone(2000))
@@ -37,7 +37,7 @@ def main() -> int:
                                              settings.proxy_port)
         if proxy_proc is None or not proxy_mod.wait_until_ready(base, 8.0):
             # 代理起不来不能拖垮主程序：退回直连
-            print("[Audio] 本地代理启动失败，本次退回直连。")
+            print("[cloudSyncG] 本地代理启动失败，本次退回直连。")
             if proxy_proc is not None:
                 try:
                     proxy_proc.terminate()

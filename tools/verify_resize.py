@@ -22,8 +22,8 @@ def _ev(kind, local_pos, global_pos):
                        Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
 
 
-from audio.config import Settings
-from audio.floating_window import FloatingWindow
+from cloudSyncG.config import Settings
+from cloudSyncG.floating_window import FloatingWindow
 
 ok = fail = 0
 

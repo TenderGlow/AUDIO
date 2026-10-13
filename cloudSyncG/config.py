@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, fields
 
 from . import secret
 
-APP_NAME = "Audio"
+APP_NAME = "cloudSyncG"
 APP_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP_NAME)
 CONFIG_PATH = os.path.join(APP_DIR, "settings.json")
 
@@ -49,7 +49,7 @@ class Settings:
     proxy_host: str = "127.0.0.1"
     proxy_port: int = 8781
     proxy_base: str = "http://127.0.0.1:8781"
-    proxy_token: str = "audio-local-proxy"
+    proxy_token: str = "cloudSyncG-local-proxy"
 
     reasoning_effort: str = "high"    # 思考档位：high（不开则由服务端默认，通常也是 high）
     prompt: str = (
@@ -126,7 +126,7 @@ def load_settings(path: str = CONFIG_PATH) -> Settings:
         if plain is None:
             # 解不开（换了账户/换了机器）→ 保留写死的默认值，并报一声
             settings.api_key = Settings().api_key
-            print("[Audio] settings.json 里的 api_key 无法解密"
+            print("[cloudSyncG] settings.json 里的 api_key 无法解密"
                   "（DPAPI 绑定当前账户），已回退到 config.py 中的默认值。")
         else:
             settings.api_key = plain
@@ -134,7 +134,7 @@ def load_settings(path: str = CONFIG_PATH) -> Settings:
         # 历史遗留的明文 key：顺手升级成密文，别一直裸着放
         try:
             save_credentials(settings, path)
-            print("[Audio] 已把 settings.json 里的明文 api_key 升级为 DPAPI 密文。")
+            print("[cloudSyncG] 已把 settings.json 里的明文 api_key 升级为 DPAPI 密文。")
         except OSError:
             pass
     return settings

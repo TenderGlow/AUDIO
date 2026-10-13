@@ -14,7 +14,7 @@ import os
 from ctypes import wintypes
 
 PREFIX = "dpapi:"          # 密文前缀，用来区分它是密文还是历史遗留的明文
-_ENTROPY = b"Audio/api-key/v1"
+_ENTROPY = b"cloudSyncG/api-key/v1"
 _CRYPTPROTECT_UI_FORBIDDEN = 0x1     # 不弹任何 UI
 _CRYPT_VERIFYCONTEXT = 0xF0000000
 
@@ -62,7 +62,7 @@ def protect(plain_text: str) -> str:
         entropy, _ent_buf = _to_blob(_ENTROPY)
         out = _DATA_BLOB()
         ok = _CRYPT32.CryptProtectData(
-            ctypes.byref(src), "Audio", ctypes.byref(entropy),
+            ctypes.byref(src), "cloudSyncG", ctypes.byref(entropy),
             None, None, _CRYPTPROTECT_UI_FORBIDDEN, ctypes.byref(out))
         if not ok:
             return plain_text

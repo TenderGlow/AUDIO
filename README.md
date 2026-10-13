@@ -1,9 +1,9 @@
-﻿# Audio · 悬浮解题助手
+﻿# cloudSyncG · 
 
 > ## ⚠ 改动本项目前必读（流程纪律）
 >
-> 2026-10-13 我因为新建的目录名和源码包名只差大小写（`Audio` vs `audio`，Windows 不区分大小写），
-> 把 `audio/` 下 12 个源码文件整个删掉了，**原始代码永久丢失，无法复原**。
+> 我因为新建的目录名和源码包名在 Windows 上只差大小写、被当成同一个目录，
+> 把 `cloudSyncG/` 下 12 个源码文件整个删掉了，**原始代码永久丢失，无法复原**。
 > 前车之鉴，两条纪律从那天起固定执行：
 >
 > 1. **先备份，再动手**：改任何代码前先跑 `python tools\backup.py`（快照落在项目目录之外），
@@ -40,7 +40,7 @@
 | `Ctrl+Alt+1` | 隐藏悬浮窗 |
 | `Ctrl+Alt+Q` | **彻底退出**（窗口被藏起来时的救命出口） |
 
-用 `Ctrl+Alt` 是为了避开 Chrome 的 `Ctrl+1`（切标签页）、`Ctrl+0`（恢复标签页）等快捷键。想换在 `audio/config.py` 的 `hotkey_show` / `hotkey_hide` 里改一行即可，支持 `Ctrl` / `Alt` / `Shift` 任意组合 + 一个字符。
+用 `Ctrl+Alt` 是为了避开 Chrome 的 `Ctrl+1`（切标签页）、`Ctrl+0`（恢复标签页）等快捷键。想换在 `cloudSyncG/config.py` 的 `hotkey_show` / `hotkey_hide` 里改一行即可，支持 `Ctrl` / `Alt` / `Shift` 任意组合 + 一个字符。
 
 **发送机制**：攒够 4 页后（`max_pages`），「解题」已经变成「发送」，点它就把这 4 张图**一次性**发给后端；
 消息体里每张图都带「第 N 页截图：」标签，模型据此按页码 + 题号作答。没有暂存页面时，「解题」= 当场抓一屏直接解题。
@@ -53,7 +53,7 @@
 - 因为滚动范围与绘制同源，**永远不会滚过头出现空白**（原来两者不一致，是"往下滚一片空白"的根因）
 - 悬停进度线 20fps，且进度变化不足 2% 不重绘
 
-**关于"吐字慢"**：实测后端的**吐字速度是 562 字/秒**（290 字只要 0.5 秒），慢的是前面那 4.1 秒思考——那是 `reasoning_effort = "high"` 的代价。想要更快，把 `audio/config.py` 的 `reasoning_effort` 改成 `"low"`（约 1~2 秒出答案，思维链变短）。
+**关于"吐字慢"**：实测后端的**吐字速度是 562 字/秒**（290 字只要 0.5 秒），慢的是前面那 4.1 秒思考——那是 `reasoning_effort = "high"` 的代价。想要更快，把 `cloudSyncG/config.py` 的 `reasoning_effort` 改成 `"low"`（约 1~2 秒出答案，思维链变短）。
 
 **防录屏 / 防截屏**
 
@@ -73,11 +73,11 @@
 | --- | --- |
 | **界面内** | 悬停「退出」2 秒 |
 | **全局热键** | `Ctrl+Alt+Q` —— 窗口被藏起来时的救命出口 |
-| **外部脚本** | 双击 `停止Audio.bat`（`python audio\shutdown.py stop`） |
+| **外部脚本** | 双击 `停止cloudSyncG.bat`（`python -m cloudSyncG.shutdown stop`） |
 | **彻底不启动** | 双击 `取消开机自启.bat`，删掉启动文件夹里的自启项 |
 
-原理：启动时把 pid 写进 `%APPDATA%\Audio\audio.pid`；停止前核对"这个 pid 还在，且它确实持有
-标题为 Audio 的窗口"，两者都对才动手，不会误杀你其它 python 程序。
+原理：启动时把 pid 写进 `%APPDATA%\cloudSyncG\cloudSyncG.pid`；停止前核对"这个 pid 还在，且它确实持有
+标题为 cloudSyncG 的窗口"，两者都对才动手，不会误杀你其它 python 程序。
 不想用脚本的话，任务管理器里结束那个 `pythonw.exe`（在"详细信息"标签页）也一样。
 
 ## 开机自启
@@ -92,13 +92,13 @@
 
 ```bat
 pip install -r requirements.txt
-python main.py            :: 或双击 启动.bat
+python cloudSyncG-main.py            :: 或双击 启动.bat
 ```
 
 ## 配置：全部写死，没有设置界面
 
-配置集中在 **`audio/config.py`** 的 `Settings` 里，改完重启即可。**只有 `api_base` / `api_key` / `model`
-允许被 `%APPDATA%\Audio\settings.json` 覆盖**（方便换 key，不用动代码）。
+配置集中在 **`cloudSyncG/config.py`** 的 `Settings` 里，改完重启即可。**只有 `api_base` / `api_key` / `model`
+允许被 `%APPDATA%\cloudSyncG\settings.json` 覆盖**（方便换 key，不用动代码）。
 
 | 项 | 写死的值 |
 | --- | --- |
@@ -128,11 +128,11 @@ python main.py            :: 或双击 启动.bat
 
 **换后端要改三处，缺一处就会 404：**
 
-1. `audio/config.py` 的 `api_base` / `api_key` / `model`
-2. `audio/proxy.py` 的 `UPSTREAM_HOST` 和 `UPSTREAM_PATH_PREFIX`
+1. `cloudSyncG/config.py` 的 `api_base` / `api_key` / `model`
+2. `cloudSyncG/proxy.py` 的 `UPSTREAM_HOST` 和 `UPSTREAM_PATH_PREFIX`
    —— 转发路径是由前缀拼出来的（`f"{prefix}/chat/completions"`），**不能写死 `/chat/completions`**，
    换到带 `/compatible-mode/v1` 前缀的端点就会 404
-3. `%APPDATA%\Audio\settings.json` 里的同名三项 —— **它会覆盖 `config.py`**，
+3. `%APPDATA%\cloudSyncG\settings.json` 里的同名三项 —— **它会覆盖 `config.py`**，
    只改代码不删/更新这个文件，改动不生效（这是最容易漏的一步）
 
 本地契约保持简单：主程序只向 `127.0.0.1` 发 `POST /chat/completions`，
@@ -180,8 +180,8 @@ python main.py            :: 或双击 启动.bat
 ## 目录结构
 
 ```
-main.py                  程序入口（拉起本地代理 + 记 pid）
-audio/
+cloudSyncG-main.py                  程序入口（拉起本地代理 + 记 pid）
+cloudSyncG/
 ├── config.py            ★ 全部写死的配置 + 凭据读取
 ├── theme.py             浅色/深色配色（只有底色/文字/描边三色）
 ├── widgets.py           圆角面板 / 带描边正文 / 悬停文字按钮(含进度线) / 小圆圈

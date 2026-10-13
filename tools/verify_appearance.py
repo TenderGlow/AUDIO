@@ -16,10 +16,10 @@ from PyQt5.QtGui import QColor, QPixmap
 
 app = QApplication(sys.argv)
 
-from audio.config import Settings
-from audio.widgets import StrokedText, RoundedPanel, HoverButton, DragMarker, ScrollArrow
-from audio.floating_window import FloatingWindow
-from audio.theme import get_theme
+from cloudSyncG.config import Settings
+from cloudSyncG.widgets import StrokedText, RoundedPanel, HoverButton, DragMarker, ScrollArrow
+from cloudSyncG.floating_window import FloatingWindow
+from cloudSyncG.theme import get_theme
 
 ok = fail = 0
 

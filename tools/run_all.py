@@ -30,11 +30,28 @@ SUITES = [
     ("verify_widgets.py", True),
     # 以下必须在真实 Windows 平台
     ("verify_privacy.py", False),
+    ("verify_five.py", False),      # 真实平台：五项复核
     ("verify_anticapture.py", False),
     ("verify_shutdown.py", False),
     ("verify_capture.py", False),
 ]
 
+
+def cleanup_between_suites() -> None:
+    """每个套件跑之前，先清掉上一个套件可能留下的进程与 pid 文件。
+
+    这些东西是**系统级共享**的：
+      - 全局热键系统唯一，残留实例占着 Ctrl+Alt+0/1/Q，
+        下一个套件的"热键已注册"就会假失败；
+      - pid 文件共享，过期的 pid 会让停止逻辑瞄错目标。
+    不清理的话，全套跑起来会冒出一堆"看着像回归、其实是脏状态"的失败。
+    """
+    try:
+        sys.path.insert(0, TOOLS)
+        import harness  # noqa: PLC0415
+        harness.cleanup_all(verbose=False)
+    except Exception as exc:  # noqa: BLE001
+        print(f"      (suite cleanup skipped: {exc})")
 
 def run(name: str, offscreen: bool) -> bool:
     env = dict(os.environ)
@@ -65,6 +82,7 @@ def main() -> int:
     print("=" * 66)
     results = []
     for name, offscreen in SUITES:
+        cleanup_between_suites()
         results.append((name, run(name, offscreen)))
     failed = [n for n, ok in results if not ok]
     print("-" * 66)

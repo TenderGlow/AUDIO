@@ -19,10 +19,10 @@ from PyQt5.QtCore import Qt, QElapsedTimer
 
 app = QApplication(sys.argv)
 
-from audio.config import Settings
-from audio.floating_window import FloatingWindow
-from audio.widgets import StrokedText
-from audio import detect
+from cloudSyncG.config import Settings
+from cloudSyncG.floating_window import FloatingWindow
+from cloudSyncG.widgets import StrokedText
+from cloudSyncG import detect
 
 ok = fail = 0
 results = {}

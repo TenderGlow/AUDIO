@@ -40,7 +40,7 @@ def running_procs():
         data = [data]
     for d in data:
         cmd = (d.get("CommandLine") or "")
-        if "main.py" in cmd or "audio.proxy" in cmd:
+        if "cloudSyncG-main.py" in cmd or "cloudSyncG.proxy" in cmd:
             rows.append((d["ProcessId"], cmd))
     return rows
 
@@ -58,8 +58,8 @@ from harness import cleanup_all, list_mains, list_proxies, wait_for
 cleanup_all()
 print(f"  起始：主程序 {len(list_mains())} 个，代理 {len(list_proxies())} 个")
 
-print("\n=== A. 正常启动 main.py（会拉起代理进程）===")
-proc = subprocess.Popen([sys.executable, "main.py"], cwd=ROOT,
+print("\n=== A. 正常启动 cloudSyncG-main.py（会拉起代理进程）===")
+proc = subprocess.Popen([sys.executable, "cloudSyncG-main.py"], cwd=ROOT,
                         creationflags=subprocess.CREATE_NO_WINDOW)
 wait_for(lambda: bool(list_mains()) and bool(list_proxies()), timeout=45)
 
@@ -84,7 +84,7 @@ check("主程序已终止", len(left_mains) == 0)
 
 print("\n=== C. shutdown.py 也能清残留代理 ===")
 if left_proxies:
-    subprocess.run([sys.executable, "audio/shutdown.py", "stop"],
+    subprocess.run([sys.executable, "cloudSyncG/shutdown.py", "stop"],
                    cwd=ROOT, capture_output=True)
     time.sleep(2)
     check("stop() 清掉了残留代理", len(list_proxies()) == 0)

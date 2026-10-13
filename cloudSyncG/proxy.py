@@ -39,7 +39,7 @@ UPSTREAM_PATH_PREFIX = "/compatible-mode/v1"
 
 # 本地令牌：主程序用它换取代理转发服务。
 # 不校验等于任何本机进程都能借用这个代理，校验是为了避免代理变成开放的 API 中转站。
-LOCAL_TOKEN = "audio-local-proxy"
+LOCAL_TOKEN = "cloudSyncG-local-proxy"
 
 UPSTREAM_PATH = f"{UPSTREAM_PATH_PREFIX}/chat/completions"
 
@@ -61,7 +61,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     """
 
     protocol_version = "HTTP/1.1"
-    server_version = "AudioProxy/1.0"
+    server_version = "cloudSyncGProxy/1.0"
 
     def log_message(self, fmt, *args):  # noqa: A002
         """不往控制台打日志，避免和主程序的输出混在一起。"""
@@ -75,7 +75,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _authorized(self) -> bool:
-        return self.headers.get("X-Audio-Token", "") == LOCAL_TOKEN
+        return self.headers.get("X-cloudSyncG-Token", "") == LOCAL_TOKEN
 
     def do_GET(self):  # noqa: N802
         """健康检查，方便主程序确认代理活着。"""
@@ -229,7 +229,7 @@ class ProxyServer:
 
     def start(self) -> "ProxyServer":
         self._thread = threading.Thread(target=self._server.serve_forever,
-                                        name="audio-proxy", daemon=True)
+                                        name="cloudSyncG-proxy", daemon=True)
         self._thread.start()
         return self
 
@@ -375,7 +375,7 @@ def spawn_detached(host: str = "127.0.0.1", port: int = 8781):
     job = _make_job_object()
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-u", "-m", "audio.proxy",
+            [sys.executable, "-u", "-m", "cloudSyncG.proxy",
              "--host", str(host), "--port", str(port),
              "--parent-pid", str(os.getpid())],
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -389,7 +389,7 @@ def spawn_detached(host: str = "127.0.0.1", port: int = 8781):
         return None
     # Job 句柄必须在主程序整个生命周期内保持打开。
     # 挂在 Popen 上防止被 GC 回收——一关就触发 KILL_ON_JOB_CLOSE，代理会被立刻杀掉。
-    proc._audio_job = job      # noqa: SLF001
+    proc._cloudSyncG_job = job      # noqa: SLF001
     if job is not None:
         _assign_to_job(job, proc.pid)
     return proc
@@ -413,7 +413,7 @@ def wait_until_ready(base_url: str, timeout: float = 8.0) -> bool:
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Audio 本地回环代理")
+    parser = argparse.ArgumentParser(description="cloudSyncG 本地回环代理")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8781)
     parser.add_argument("--parent-pid", type=int, default=0,

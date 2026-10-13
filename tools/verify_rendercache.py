@@ -18,9 +18,9 @@ from PyQt5.QtGui import QColor, QPixmap, QPainter, QPainterPath, QPen, QBrush
 
 app = QApplication(sys.argv)
 
-from audio.config import Settings
-from audio.widgets import StrokedText
-from audio import detect
+from cloudSyncG.config import Settings
+from cloudSyncG.widgets import StrokedText
+from cloudSyncG import detect
 
 ok = fail = 0
 
@@ -56,7 +56,7 @@ def render(rebuild_each_time: bool):
     t.scroll_to_extreme("top")
 
     if rebuild_each_time:
-        from audio.widgets import make_font
+        from cloudSyncG.widgets import make_font
         font = make_font(11, False)
         pm = QPixmap(t.size())
         pm.fill(Qt.transparent)
@@ -162,7 +162,7 @@ for i in range(1200):
     t2.append_text(f"第{i}行内容\n")
 app.processEvents()
 paint_once(t2)
-from audio.widgets import PATH_CACHE_MAX
+from cloudSyncG.widgets import PATH_CACHE_MAX
 check("缓存有上限", len(t2._path_cache) <= PATH_CACHE_MAX,
       f"-> {len(t2._path_cache)} 条 (上限 {PATH_CACHE_MAX})")
 

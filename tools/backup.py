@@ -1,7 +1,7 @@
-"""一键备份 Audio 项目。
+"""一键备份 cloudSyncG 项目。
 
 **在动任何代码之前先跑这个。** 2026-10-13 我因为新建的目录名和源码包名
-只差大小写（`Audio` vs `audio`，Windows 不区分大小写），把 12 个源码文件删了，
+在 Windows 上被当成同一个目录，一次目录操作误删了源码包里的源码文件，
 不得不从零重建。这个教训的代价是整整一轮返工。
 
 用法：
@@ -21,19 +21,19 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 放到项目外面：源码和备份不能住在同一棵目录树里
-BACKUP_DIR = os.path.join(os.path.dirname(ROOT), "Audio备份")
+BACKUP_DIR = os.path.join(os.path.dirname(ROOT), "cloudSyncG备份")
 
-INCLUDE_DIRS = ("audio", "tools")
-INCLUDE_FILES = ("main.py", "README.md", "requirements.txt",
+INCLUDE_DIRS = ("cloudSyncG", "tools")
+INCLUDE_FILES = ("cloudSyncG-main.py", "README.md", "requirements.txt",
                  "启动.bat", "开机自启.bat", "安装开机自启.bat",
-                 "停止Audio.bat", "取消开机自启.bat")
+                 "停止cloudSyncG.bat", "取消开机自启.bat")
 EXCLUDE_DIRS = {"__pycache__", ".git", "backups"}
 
 
 def make_backup(keep: int = 20) -> str:
     os.makedirs(BACKUP_DIR, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = os.path.join(BACKUP_DIR, f"Audio-{stamp}.zip")
+    target = os.path.join(BACKUP_DIR, f"cloudSyncG-{stamp}.zip")
 
     count = 0
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:

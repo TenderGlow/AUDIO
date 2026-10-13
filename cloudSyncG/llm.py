@@ -26,7 +26,7 @@ _CONNECTION_LOCK = threading.Lock()
 _CONNECTIONS: dict[str, http.client.HTTPSConnection] = {}
 
 # 本地代理模式下的认证头：主程序只带这个本地令牌，真 Key 由代理注入
-_PROXY_TOKEN_HEADER = "X-Audio-Token"
+_PROXY_TOKEN_HEADER = "X-cloudSyncG-Token"
 
 
 def _connect(url: str, timeout: int) -> http.client.HTTPSConnection:

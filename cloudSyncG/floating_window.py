@@ -63,9 +63,16 @@ class DragProxy(QWidget):
 
 
 class FloatingWindow(QWidget):
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None,
+                 persist_credentials: bool = True):
+        """persist_credentials=False 时关闭窗口不写盘。
+
+        测试或临时窗口一律传 False：否则一个用默认值构造的窗口关闭时，
+        会把默认值写回 settings.json，覆盖真实凭据。
+        """
         super().__init__()
         self.settings = settings or Settings()
+        self._persist_credentials = bool(persist_credentials)
 
         self._pages: list[Capture] = []
         self._busy = False
@@ -101,7 +108,7 @@ class FloatingWindow(QWidget):
         self.resize(self.settings.width, self.settings.height)
         # 标题留空：Chrome 等的"共享某个窗口"选择器是靠枚举顶层窗口 + 取标题工作的，
         # 无标题窗口会被直接跳过。留着标题就等于把自己送到选择器列表里。
-        # 外部停止程序改用 PID 精确匹配（见 audio/shutdown.py），不依赖标题。
+        # 外部停止程序改用 PID 精确匹配（见 cloudSyncG/shutdown.py），不依赖标题。
         self.setWindowTitle("")
 
         self._build_ui()
@@ -519,10 +526,12 @@ class FloatingWindow(QWidget):
         """保险措施：永远不给窗口任务栏按钮，也不创建托盘图标。"""
         try:
             WS_EX_TOOLWINDOW, WS_EX_APPWINDOW = 0x00000080, 0x00040000
+            WS_EX_NOACTIVATE = 0x08000000   # 点击/置顶都不抢前台焦点
             GWL_EXSTYLE = -20
             hwnd = wintypes.HWND(int(self.winId()))
             ex = _user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
             ex |= WS_EX_TOOLWINDOW
+            ex |= WS_EX_NOACTIVATE
             ex &= ~WS_EX_APPWINDOW
             _user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ex)
         except Exception:  # noqa: BLE001 - 失败也无所谓，Qt 的 Tool 标志已生效
@@ -546,7 +555,7 @@ class FloatingWindow(QWidget):
         """把 Win32 窗口标题清成空串。
 
         为什么必须走 Win32：Qt 的 setWindowTitle("") 会被忽略并回退成应用名
-        （main.py 里 setApplicationName("Audio")），结果原生标题仍是 "Audio"。
+        （cloudSyncG-main.py 里 setApplicationName("cloudSyncG")），结果原生标题仍是 "cloudSyncG"。
         而 Chrome 等的「共享某个窗口」选择器正是靠枚举顶层窗口 + 取标题工作的，
         标题非空就会被列出来，用户一点就等于把悬浮窗共享出去。
         """
@@ -571,8 +580,13 @@ class FloatingWindow(QWidget):
         QTimer.singleShot(120, self._force_topmost)
 
     def closeEvent(self, event):
-        save_credentials(self.settings)
+        if self._persist_credentials:
+            save_credentials(self.settings)
         super().closeEvent(event)
+        # 必须显式退出：窗口带 Qt.Tool，而 Qt 的 quitOnLastWindowClosed
+        # 只统计普通窗口 —— 关掉最后一个 Tool 窗口**不会**结束应用。
+        # 少了这一句，收到 WM_CLOSE 后会出现"窗口没了、进程还在"的隐形僵尸。
+        QApplication.quit()
 
     def _show_by_hotkey(self) -> None:
         self.show()

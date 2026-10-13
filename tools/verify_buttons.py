@@ -19,8 +19,8 @@ from PyQt5.QtGui import QMouseEvent
 
 app = QApplication(sys.argv)
 
-from audio.config import Settings
-from audio.floating_window import FloatingWindow
+from cloudSyncG.config import Settings
+from cloudSyncG.floating_window import FloatingWindow
 
 ok = fail = 0
 
@@ -148,7 +148,7 @@ check("取消暂存后恢复『解题』", win.btn_solve._text == "解题")
 print("\n=== 8. 端到端：悬停「解题」是否真的干活 ===")
 # 前面只证明"信号发出来了"。这里要证明它真的走到了发请求那一步。
 # 做法：拦掉网络与抓屏，只看状态流转。
-from audio.capture import Capture
+from cloudSyncG.capture import Capture
 
 captured = {"n": 0}
 real_grab = Capture.grab

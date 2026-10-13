@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from PyQt5.QtWidgets import QApplication
 app = QApplication(sys.argv)
 
-from audio import shutdown
+from cloudSyncG import shutdown
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
@@ -39,9 +39,9 @@ cleanup_all()
 check("status 判定为未运行", not shutdown.is_running())
 
 print("\n=== 2. 启动真实后台进程 ===")
-proc = subprocess.Popen([PY, "main.py"], cwd=ROOT,
+proc = subprocess.Popen([PY, "cloudSyncG-main.py"], cwd=ROOT,
                         creationflags=subprocess.CREATE_NO_WINDOW)
-# 必须等**窗口**出现，而不只是等 pid 文件：main.py 现在还要等本地代理就绪，
+# 必须等**窗口**出现，而不只是等 pid 文件：cloudSyncG-main.py 现在还要等本地代理就绪，
 # 窗口会比 pid 文件晚一点建好。只等 is_running() 会读到 pid 就断言，读到的 hwnd 是 0。
 deadline = time.time() + 40
 while time.time() < deadline and not (shutdown.is_running()
@@ -66,7 +66,7 @@ print(f"        扩展样式 = 0x{ex & 0xFFFFFFFF:08X}")
 check("无任务栏按钮 (WS_EX_APPWINDOW 未置位)", not (ex & 0x00040000))
 check("是工具窗口 (WS_EX_TOOLWINDOW 已置位)", bool(ex & 0x00000080))
 
-# 托盘：Qt 托盘图标会创建一个带 "Notification Area" 关联的窗口；这里查 Shell_TrayWnd 下没有 Audio 图标窗口
+# 托盘：Qt 托盘图标会创建一个带 "Notification Area" 关联的窗口；这里查 Shell_TrayWnd 下没有 cloudSyncG 图标窗口
 found_tray = {"found": False}
 EnumWindowsProc = __import__("ctypes").WINFUNCTYPE(
     __import__("ctypes").c_bool, __import__("ctypes").wintypes.HWND,
@@ -81,7 +81,7 @@ def cb(h, _l):
             user32.GetClassNameW(h, buf, 256)
         except Exception:
             return True
-        if buf.value == "Qt5152QWindowIcon" or "Audio" == buf.value:
+        if buf.value == "Qt5152QWindowIcon" or "cloudSyncG" == buf.value:
             found_tray["found"] = True
             return False
     return True
@@ -100,7 +100,7 @@ check("进程已不在运行", not shutdown.is_running())
 check("pid 文件已清理", shutdown.read_pid() == 0)
 
 print("\n=== 5. 强杀兜底 ===")
-proc2 = subprocess.Popen([PY, "main.py"], cwd=ROOT,
+proc2 = subprocess.Popen([PY, "cloudSyncG-main.py"], cwd=ROOT,
                          creationflags=subprocess.CREATE_NO_WINDOW)
 deadline = time.time() + 40
 while time.time() < deadline and not (shutdown.is_running()

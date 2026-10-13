@@ -17,9 +17,9 @@ from PyQt5.QtGui import QPixmap, QWheelEvent, QGuiApplication
 
 app = QApplication(sys.argv)
 
-from audio.widgets import DragMarker, ScrollArrow, StrokedText
-from audio.config import Settings
-from audio.floating_window import FloatingWindow
+from cloudSyncG.widgets import DragMarker, ScrollArrow, StrokedText
+from cloudSyncG.config import Settings
+from cloudSyncG.floating_window import FloatingWindow
 
 ok = fail = 0
 

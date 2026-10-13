@@ -18,10 +18,10 @@ os.chdir(ROOT)
 from PyQt5.QtWidgets import QApplication
 app = QApplication(sys.argv)
 
-from audio.config import load_settings
-from audio import proxy as proxy_mod
-from audio.llm import stream_chunks
-from audio.capture import Capture
+from cloudSyncG.config import load_settings
+from cloudSyncG import proxy as proxy_mod
+from cloudSyncG.llm import stream_chunks
+from cloudSyncG.capture import Capture
 
 MY_PID = os.getpid()
 ok = fail = 0

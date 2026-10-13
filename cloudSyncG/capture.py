@@ -68,7 +68,7 @@ class Capture:
         self.base64 = base64.b64encode(buffer.getvalue()).decode("ascii")
 
         self.path = os.path.join(tempfile.gettempdir(),
-                                 f"audio_{int(time.time() * 1000)}.jpg")
+                                 f"cloudSyncG_{int(time.time() * 1000)}.jpg")
         image.save(self.path, format="JPEG", quality=quality)
         return self
 

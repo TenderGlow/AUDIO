@@ -1,4 +1,4 @@
-"""从外部查找并停止正在运行的 Audio 悬浮窗。
+"""从外部查找并停止正在运行的 cloudSyncG 窗口。
 
 因为窗口既不进任务栏也不进托盘，用户在界面被隐藏时没有任何可见的退出入口，
 所以需要一条外部通道。本模块提供三种方式，从优雅到强硬：
@@ -9,8 +9,8 @@
 
 **进程身份怎么确认？**
 不靠"进程名是 python"来猜——那样会误杀用户其它 python 程序。
-启动时把 pid 写进 `%APPDATA%\\Audio\\audio.pid`，停止前核对
-"这个 pid 还在、且它确实持有标题为 Audio 的窗口"，两者都对才动手。
+启动时把 pid 写进 `%APPDATA%\\cloudSyncG\\cloudSyncG.pid`，停止前核对
+"这个 pid 还在、且它确实持有标题为 cloudSyncG 的窗口"，两者都对才动手。
 """
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ import sys
 import time
 from ctypes import wintypes
 
-WINDOW_TITLE = "Audio"
+WINDOW_TITLE = "cloudSyncG"
 PROCESS_TERMINATE = 0x0001
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 WM_CLOSE = 0x0010
 TH32CS_SNAPPROCESS = 0x00000002
 
 PID_FILE = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "Audio", "audio.pid")
+    os.environ.get("APPDATA", os.path.expanduser("~")), "cloudSyncG", "cloudSyncG.pid")
 
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -167,7 +167,7 @@ def _find_by_commandline() -> int:
 
     条件要够严，避免误杀别人跑的 python：
       1) 进程名是 python / pythonw
-      2) 命令行里含 main.py
+      2) 命令行里含 cloudSyncG-main.py
       3) 该进程持有一个**标题为空**的顶层窗口（这正是悬浮窗的专属特征，
          普通 python 程序不会有一个无标题的顶层窗口）
     """
@@ -191,7 +191,7 @@ def _find_by_commandline() -> int:
     for row in rows:
         cmd = (row.get("CommandLine") or "").lower()
         pid = int(row.get("ProcessId") or 0)
-        if not pid or "main.py" not in cmd:
+        if not pid or "cloudSyncG-main.py" not in cmd:
             continue
         if _has_titleless_window(pid):
             return pid
@@ -248,17 +248,54 @@ def target_pid() -> int:
 # ---------------------------------------------------------------------------
 # 停止
 # ---------------------------------------------------------------------------
+def _wait_gone(pid: int, seconds: float) -> bool:
+    """等进程真正退出。"""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if not pid_alive(pid):
+            return True
+        time.sleep(0.1)
+    return not pid_alive(pid)
+
+
+def _terminate(pid: int) -> bool:
+    """强制结束指定 pid。"""
+    if not pid:
+        return False
+    handle = _kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+    if not handle:
+        return False
+    try:
+        return bool(_kernel32.TerminateProcess(handle, 0))
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
 def stop() -> bool:
-    """优雅关闭：发 WM_CLOSE 让它走正常退出流程（保存凭据）。"""
+    """优雅关闭，失败则强杀。返回进程是否真的没了。
+
+    **看进程，不能只看窗口**。窗口带 Qt.Tool，关掉窗口不会结束应用；
+    只判 IsWindow 消失会误报成功，留下隐形僵尸。
+
+    回退强杀时**必须用开头记下的 pid**：应用关闭流程会先删掉 pid 文件，
+    此时进程可能还没退完，重新解析会得到 0，于是杀不掉。
+    """
+    pid = target_pid()
+    if not pid:
+        return False
     hwnd = find_window()
     if hwnd:
         _user32.PostMessageW(wintypes.HWND(hwnd), WM_CLOSE, 0, 0)
-        for _ in range(25):                # 最多等 2.5 秒
-            if not _user32.IsWindow(wintypes.HWND(hwnd)):
-                cleanup()
-                return True
-            time.sleep(0.1)
-    return kill()
+        if _wait_gone(pid, 8.0):
+            cleanup()
+            return True
+    for _ in range(2):
+        _terminate(pid)
+        if _wait_gone(pid, 3.0):
+            cleanup()
+            return True
+    cleanup()
+    return False
 
 
 def kill() -> bool:
@@ -290,7 +327,7 @@ def cleanup() -> None:
 # 代理进程清理
 # ---------------------------------------------------------------------------
 def find_proxy_pids() -> list[int]:
-    """找出所有 Audio 本地代理进程的 pid。
+    """找出所有 cloudSyncG 本地代理进程的 pid。
 
     正常情况下 Job Object 会让代理跟着主程序一起死；但主程序被强杀、
     或 Job 没能生效时就可能留下孤儿。孤儿代理会继续占着连接往上跑，
@@ -320,7 +357,7 @@ def find_proxy_pids() -> list[int]:
 def _is_proxy_process(pid: int) -> bool:
     """是不是我们的代理进程。
 
-    判据：进程名是 python，且命令行含 `audio.proxy`。命令行读不到就宁可漏杀，
+    判据：进程名是 python，且命令行含 `cloudSyncG.proxy`。命令行读不到就宁可漏杀，
     绝不误杀用户自己跑的其他 python 程序。
     """
     handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
@@ -337,7 +374,7 @@ def _is_proxy_process(pid: int) -> bool:
             return False
     finally:
         _kernel32.CloseHandle(handle)
-    return "audio.proxy" in _command_line(pid)
+    return "cloudSyncG.proxy" in _command_line(pid)
 
 
 def _command_line(pid: int) -> str:

@@ -21,9 +21,9 @@ app = QApplication(sys.argv)
 
 from PIL import Image, ImageDraw, ImageFont
 
-from audio.config import load_settings, Settings
-from audio import proxy as proxy_mod
-from audio.llm import stream_chunks
+from cloudSyncG.config import load_settings, Settings
+from cloudSyncG import proxy as proxy_mod
+from cloudSyncG.llm import stream_chunks
 
 ok = fail = 0
 
@@ -109,7 +109,7 @@ if len(stamps) > 3:
 check("答案正确（1+1=2）", "2" in text, f"-> {text[:60]!r}")
 
 print("\n=== 4. 主程序侧不出现上游地址 ===")
-from audio.llm import build_payload
+from cloudSyncG.llm import build_payload
 payload = build_payload([image], s)
 blob = json.dumps(payload, ensure_ascii=False)
 # 注意：model 字段是 "deepseek-flash"，那是**模型名**不是端点，
@@ -143,7 +143,7 @@ import io as _io
 import tokenize
 
 src_path = os.path.join(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))), "audio", "llm.py")
+    os.path.abspath(__file__))), "cloudSyncG", "llm.py")
 with open(src_path, encoding="utf-8") as fp:
     toks = list(tokenize.generate_tokens(fp.readline))
 code_only = tokenize.untokenize(

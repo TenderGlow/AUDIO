@@ -25,11 +25,11 @@ from PyQt5.QtGui import QColor, QPainter, QFont, QGuiApplication
 
 app = QApplication(sys.argv)
 
-from audio.hotkeys import exclude_window_from_capture
-from audio import detect
-from audio.config import Settings
-from audio.capture import Capture
-from audio.floating_window import FloatingWindow
+from cloudSyncG.hotkeys import exclude_window_from_capture
+from cloudSyncG import detect
+from cloudSyncG.config import Settings
+from cloudSyncG.capture import Capture
+from cloudSyncG.floating_window import FloatingWindow
 
 ok = fail = 0
 
@@ -126,7 +126,7 @@ check("初始状态未隐藏", win.isVisible())
 # 强制进入"有录屏"状态
 win._capture_timer.stop()
 orig_risk = detect.capture_risk
-import audio.floating_window as fw
+import cloudSyncG.floating_window as fw
 fw.capture_risk = lambda: (True, "模拟录屏中")
 win._check_capture_risk()
 check("检测到录屏后自动隐藏", not win.isVisible())

@@ -23,8 +23,8 @@ from PyQt5.QtGui import QMouseEvent, QWheelEvent, QResizeEvent, QCloseEvent
 
 app = QApplication(sys.argv)
 
-from audio.config import Settings
-from audio.floating_window import FloatingWindow
+from cloudSyncG.config import Settings
+from cloudSyncG.floating_window import FloatingWindow
 
 ok = fail = 0
 
@@ -149,7 +149,7 @@ check("显隐/跟随移动无异常", not errors5, "-> " + errors5[0] if errors5
 
 print("\n=== 7. 录屏检测自动隐藏不会崩 ===")
 errors6 = []
-import audio.floating_window as fw
+import cloudSyncG.floating_window as fw
 real_risk = fw.capture_risk
 try:
     fw.capture_risk = lambda: (True, "模拟录屏")

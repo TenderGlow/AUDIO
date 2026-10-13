@@ -23,9 +23,9 @@ from PyQt5.QtGui import QGuiApplication, QColor
 
 app = QApplication(sys.argv)
 
-from audio.config import Settings
-from audio.floating_window import FloatingWindow
-from audio.capture import Capture, cursor_monitor_rect
+from cloudSyncG.config import Settings
+from cloudSyncG.floating_window import FloatingWindow
+from cloudSyncG.capture import Capture, cursor_monitor_rect
 
 ok = fail = 0
 
@@ -176,8 +176,8 @@ check("原生标题为空（Qt 层）", win.windowTitle() == "", f"-> {win.windo
 buf = ctypes.create_unicode_buffer(256)
 user32.GetWindowTextW(wintypes.HWND(int(win.winId())), buf, 256)
 check("原生标题为空（Win32 层）", buf.value == "", f"-> {buf.value!r}")
-check("不会被「共享某个窗口」列出来", "Audio" not in found,
-      f"-> 可见窗口 {len(found)} 个，其中不含 Audio")
+check("不会被「共享某个窗口」列出来", "cloudSyncG" not in found,
+      f"-> 可见窗口 {len(found)} 个，其中不含 cloudSyncG")
 
 print("\n=== 附：抓屏范围 ===")
 rect = cursor_monitor_rect()

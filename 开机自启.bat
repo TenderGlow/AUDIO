@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Audio
+title cloudSyncG
 cd /d "%~dp0"
-start "" pythonw.exe main.py
+start "" pythonw.exe cloudSyncG-main.py
 exit

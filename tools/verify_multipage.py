@@ -17,9 +17,9 @@ app = QApplication(sys.argv)
 
 from PIL import Image, ImageDraw, ImageFont
 
-from audio.config import load_settings
-from audio.llm import stream_chunks, build_payload
-from audio import proxy as proxy_mod
+from cloudSyncG.config import load_settings
+from cloudSyncG.llm import stream_chunks, build_payload
+from cloudSyncG import proxy as proxy_mod
 import json
 
 settings = load_settings()
