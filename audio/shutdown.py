@@ -159,11 +159,75 @@ def is_running() -> bool:
     return bool(find_window())
 
 
+def _find_by_commandline() -> int:
+    """兜底：pid 文件缺失/损坏时，从命令行反查。
+
+    为什么要兜底：pid 文件会被 cleanup() 删掉，一旦删除（或者被清理工具误删），
+    光靠 pid 文件就再也定位不到还在跑的实例了——实测踩过这个坑。
+
+    条件要够严，避免误杀别人跑的 python：
+      1) 进程名是 python / pythonw
+      2) 命令行里含 main.py
+      3) 该进程持有一个**标题为空**的顶层窗口（这正是悬浮窗的专属特征，
+         普通 python 程序不会有一个无标题的顶层窗口）
+    """
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             "Get-CimInstance Win32_Process -Filter "
+             "\"Name='python.exe' OR Name='pythonw.exe'\" | "
+             "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
+            capture_output=True, text=True, errors="replace", timeout=15).stdout
+    except Exception:  # noqa: BLE001
+        return 0
+    import json as _json
+    try:
+        rows = _json.loads(out) if out.strip() else []
+    except Exception:  # noqa: BLE001
+        return 0
+    if isinstance(rows, dict):
+        rows = [rows]
+
+    for row in rows:
+        cmd = (row.get("CommandLine") or "").lower()
+        pid = int(row.get("ProcessId") or 0)
+        if not pid or "main.py" not in cmd:
+            continue
+        if _has_titleless_window(pid):
+            return pid
+    return 0
+
+
+def _has_titleless_window(pid: int) -> bool:
+    """该 pid 是否持有一个无标题的顶层窗口（悬浮窗的特征）。"""
+    found = {"ok": False}
+
+    def callback(hwnd, _lparam):
+        p = wintypes.DWORD()
+        _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+        if int(p.value) != pid:
+            return True
+        buf = ctypes.create_unicode_buffer(256)
+        try:
+            _user32.GetWindowTextW(hwnd, buf, 256)
+        except Exception:  # noqa: BLE001
+            return True
+        if buf.value == "":
+            found["ok"] = True
+            return False
+        return True
+
+    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND,
+                                         wintypes.LPARAM)
+    _user32.EnumWindows(EnumWindowsProc(callback), 0)
+    return found["ok"]
+
+
 def target_pid() -> int:
     """要动的是哪个进程。
 
-    双重确认，避免误杀：pid 文件里记录的进程必须**同时**持有 Audio 标题的窗口。
-    只有两者一致才返回它。
+    双重确认，避免误杀：pid 文件里记录的进程必须**同时**持有那个无标题窗口。
+    两者都对不上时，再走命令行兜底反查。
     """
     hwnd = find_window()
     win_pid = window_pid(hwnd) if hwnd else 0
@@ -174,6 +238,10 @@ def target_pid() -> int:
         return win_pid
     if file_pid and pid_alive(file_pid):
         return file_pid
+    # 兜底：pid 文件没了/对不上，仍然要能找到还活着的实例
+    found = _find_by_commandline()
+    if found and pid_alive(found):
+        return found
     return 0
 
 
