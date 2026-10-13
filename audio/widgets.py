@@ -11,15 +11,14 @@
 """
 from __future__ import annotations
 
-import math
 import time
 
 from PyQt5.QtCore import (QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal)
-from PyQt5.QtGui import (QColor, QFont, QFontMetricsF, QPainter, QPainterPath,
-                         QPen, QPolygonF)
+from PyQt5.QtGui import (QBrush, QColor, QFont, QFontMetricsF, QPainter,
+                         QPainterPath, QPen, QPolygonF)
 from PyQt5.QtWidgets import QWidget
 
-MAX_STROKE_PX = 2.6          # 描边半径上限，防止"偏移复制"把字撑成墨团
+MAX_STROKE_PX = 2.6          # 描边宽度上限，防止把字撑肥糊成一团
 
 
 # ---------------------------------------------------------------- 颜色工具
@@ -280,14 +279,20 @@ class StrokedText(QWidget):
 
     # ---------------- 绘制 ----------------
     def paintEvent(self, _event):
-        """只画"看得见"的那些行 —— 与换行表共用同一套结果，成本恒定。"""
+        """只画"看得见"的那些行 —— 与换行表共用同一套结果，成本恒定。
+
+        描边用 `QPainterPath.addText` + `strokePath`/`fillPath`，**不是**多方向偏移复制。
+        旧写法（8~12 个方向各 drawText 一次）有两个问题：绘制调用 ×8~12，
+        而且偏移会把字撑肥、糊成一团（设计文档 bug #3）。path 写法一次构建、一次描边，
+        又快又干净。
+        """
         if not self._text:
             return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.setRenderHint(QPainter.TextAntialiasing, True)
-        painter.setFont(make_font(self._font_size, self._bold))
-        painter.setBrush(Qt.NoBrush)
+        font = make_font(self._font_size, self._bold)
+        painter.setFont(font)
 
         lines = self._wrap()
         line_height = self._m_line_height
@@ -295,22 +300,20 @@ class StrokedText(QWidget):
         first = max(0, int(self._scroll // line_height))
         last = min(len(lines), first + int(view_height // line_height) + 2)
         left = float(self._padding)
-        right = float(self.width() - self._padding)
 
-        radius = min(self._stroke_width / 2.0, MAX_STROKE_PX)
-        offsets = []
-        if radius > 0.15:
-            steps = 8 if radius <= 1.4 else 12
-            offsets = [(radius * math.cos(2 * math.pi * i / steps),
-                        radius * math.sin(2 * math.pi * i / steps))
-                       for i in range(steps)]
+        # 描边笔：宽度封顶，避免把字撑肥
+        width = min(float(self._stroke_width), MAX_STROKE_PX * 2.0)
+        stroked = width > 0.2 and self._stroke_alpha > 0
+        if stroked:
             outline = QColor(*self._stroke_rgb)
-            outline.setAlpha(self._stroke_alpha)
-            outline_pen = QPen(outline)
-            outline_pen.setWidthF(1.0)
-            fill_pen = QPen(self._fg)
-        else:
-            fill_pen = QPen(self._fg)
+            outline.setAlpha(int(self._stroke_alpha))
+            stroke_pen = QPen(outline)
+            stroke_pen.setWidthF(width)
+            stroke_pen.setJoinStyle(Qt.RoundJoin)
+            stroke_pen.setCapStyle(Qt.RoundCap)
+
+        ascent = self._m_metrics.ascent()
+        fill = QBrush(self._fg)
 
         for index in range(first, last):
             start, end = lines[index]
@@ -318,16 +321,16 @@ class StrokedText(QWidget):
             if not segment:
                 continue
             top = self._padding + index * line_height - self._scroll
-            rect = QRectF(left, top, right - left, line_height)
-            if offsets:
-                # 描边：多方向偏移复制。注意这会让绘制调用 ×8~12，
-                # 所以默认关闭；真要开建议改用 QPainterPath.addText + strokePath。
-                painter.setPen(outline_pen)
-                for dx, dy in offsets:
-                    painter.drawText(rect.translated(dx, dy),
-                                     int(Qt.AlignLeft | Qt.AlignVCenter), segment)
-                painter.setPen(fill_pen)
-            painter.drawText(rect, int(Qt.AlignLeft | Qt.AlignVCenter), segment)
+            baseline = top + ascent
+            path = QPainterPath()
+            path.addText(left, baseline, font, segment)
+            if stroked:
+                # 注意：PyQt5 的 strokePath(path, pen) **必须显式传笔**，
+                # 只传 path 会 TypeError；而这里是 paintEvent，异常直接 qFatal 闪退。
+                painter.setPen(stroke_pen)
+                painter.strokePath(path, stroke_pen)
+            painter.setPen(Qt.NoPen)
+            painter.fillPath(path, fill)
 
     def wheelEvent(self, event):
         """一格滚轮 = 120 单位 → 45px（规格 4.5）。

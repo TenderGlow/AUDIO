@@ -18,6 +18,7 @@ TOOLS = os.path.join(ROOT, "tools")
 SUITES = [
     ("verify.py", True),
     ("verify_buttons.py", True),
+    ("verify_appearance.py", True),
     ("verify_noabort.py", True),
     ("verify_multipage.py", True),
     ("verify_proxy.py", True),
@@ -73,6 +74,7 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 
 
 

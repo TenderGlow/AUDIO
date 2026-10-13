@@ -274,7 +274,8 @@ class FloatingWindow(QWidget):
         self.body.set_font_size(settings.font_size)
         self.body.set_bold(settings.bold)
         self.body.set_stroke(theme.stroke,
-                             settings.stroke_width * stroke_scale(settings.bg_opacity))
+                             settings.stroke_width * stroke_scale(settings.bg_opacity),
+                             settings.stroke_alpha)
 
         # 所有可见元素共用同一支"墨水"：同一个颜色、同一档透明度，不做任何彩色区分。
         # 注意必须用 HexArgb：QColor.name() 默认会丢掉 alpha，文字就变成纯黑。

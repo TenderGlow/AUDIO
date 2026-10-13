@@ -21,11 +21,12 @@ class Settings:
     # ---- 一、悬浮样式（写死）----
     theme: str = "light"              # 悬浮主题：浅色
     bg_opacity: float = 0.0           # 悬浮底色浓度：0（底色全透）
-    stroke_width: float = 0.0         # 文字描边：不描边
-    # 注意：当前描边实现是"8~12 个方向偏移复制"，打开会让每帧绘制调用 ×8~12。
-    # 目前为 0 所以零开销；哪天真要开描边，正确做法是改成 QPainterPath.addText +
-    # strokePath 一次描边，而不是在这套偏移复制上做性能优化。
-    text_opacity: float = 0.08        # 文字透明度：8%
+    # 文字描边：同主题色的细描边。
+    # 实现是 QPainterPath.addText + strokePath（一次描边），
+    # 不是早期那种"8~12 方向偏移复制"——那既慢 8~12 倍，又会把字撑肥糊掉。
+    stroke_width: float = 1.2         # 细描边宽度(px)
+    stroke_alpha: int = 200           # 描边自身的不透明度
+    text_opacity: float = 0.10        # 文字透明度：10%（正文/按钮/状态/小圆圈/箭头统一）
     bold: bool = False                # 笔画不加粗
     font_size: int = 8                # 正文字号（100% = 基准 8pt）
     font_button_size: int = 6         # 底部四个按钮字号（小字）
