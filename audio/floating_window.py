@@ -99,6 +99,10 @@ class FloatingWindow(QWidget):
         self.setMouseTracking(True)
         self.setMinimumSize(*MIN_SIZE)
         self.resize(self.settings.width, self.settings.height)
+        # 标题留空：Chrome 等的"共享某个窗口"选择器是靠枚举顶层窗口 + 取标题工作的，
+        # 无标题窗口会被直接跳过。留着标题就等于把自己送到选择器列表里。
+        # 外部停止程序改用 PID 精确匹配（见 audio/shutdown.py），不依赖标题。
+        self.setWindowTitle("")
 
         self._build_ui()
         self.apply_settings(self.settings, persist=False)
@@ -538,11 +542,25 @@ class FloatingWindow(QWidget):
         except Exception:  # noqa: BLE001 - 非 Windows / 权限不足时忽略
             pass
 
+    def _clear_native_title(self) -> None:
+        """把 Win32 窗口标题清成空串。
+
+        为什么必须走 Win32：Qt 的 setWindowTitle("") 会被忽略并回退成应用名
+        （main.py 里 setApplicationName("Audio")），结果原生标题仍是 "Audio"。
+        而 Chrome 等的「共享某个窗口」选择器正是靠枚举顶层窗口 + 取标题工作的，
+        标题非空就会被列出来，用户一点就等于把悬浮窗共享出去。
+        """
+        try:
+            _user32.SetWindowTextW(wintypes.HWND(int(self.winId())), "")
+        except Exception:  # noqa: BLE001 - 非 Windows / 权限不足时忽略
+            pass
+
     def showEvent(self, event):
         super().showEvent(event)
         self._ensure_no_taskbar()
         # setWindowFlag 会重建原生窗口句柄，affinity 会丢，所以每次显示都要重新设置
         self._apply_capture_exclusion()
+        self._clear_native_title()
         self._disarm_hover_buttons()
         screen = QGuiApplication.primaryScreen()
         if screen:

@@ -1,9 +1,10 @@
 ﻿"""跑全部自检套件。
 
 注意：不能一上来就对所有套件设 `QT_QPA_PLATFORM=offscreen`。
-`verify_anticapture` / `verify_shutdown` 需要**真实** Windows 平台——
-`SetWindowDisplayAffinity` 和 `RegisterHotKey` 在 offscreen 下是不工作的，
-强行跑会得到一堆假失败。
+依赖 Win32 原生能力的套件在 offscreen 下**不会工作**，会得到一堆假失败：
+  - verify_capture / verify_privacy：SetWindowDisplayAffinity 无效
+  - verify_anticapture / verify_shutdown：需要真实窗口与 RegisterHotKey
+`run_all.py` 已按套件分别处理。
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 
-# (套件名, 是否需要 offscreen)
+# (套件名, 是否用 offscreen)
 SUITES = [
     ("verify.py", True),
     ("verify_buttons.py", True),
@@ -27,9 +28,11 @@ SUITES = [
     ("verify_orphan.py", True),
     ("verify_resize.py", True),
     ("verify_widgets.py", True),
-    ("verify_anticapture.py", False),   # 真实平台
-    ("verify_shutdown.py", False),      # 真实平台
-    ("verify_capture.py", False),       # 真实平台：像素级证明
+    # 以下必须在真实 Windows 平台
+    ("verify_privacy.py", False),
+    ("verify_anticapture.py", False),
+    ("verify_shutdown.py", False),
+    ("verify_capture.py", False),
 ]
 
 
@@ -75,8 +78,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-

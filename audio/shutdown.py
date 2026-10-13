@@ -93,12 +93,41 @@ def pid_alive(pid: int) -> bool:
 # 窗口查找
 # ---------------------------------------------------------------------------
 def find_window() -> int:
-    """按标题找悬浮窗句柄。窗口即使被 hide() 了句柄依然有效，所以照样找得到。"""
-    found = {"hwnd": 0}
-    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND,
-                                         wintypes.LPARAM)
+    """找悬浮窗句柄。窗口即使被 hide() 了句柄依然有效，所以照样找得到。
 
-    def callback(hwnd, _lparam):
+    **按 PID 匹配，不按标题**：悬浮窗刻意设了空标题（这样 Chrome 等的
+    「共享某个窗口」选择器会跳过它），所以已经没有标题可匹配了。
+    改用 pid 文件记录的进程号来找，既精确又不会误伤别的窗口。
+    """
+    pid = read_pid()
+    if pid:
+        found = {"visible": 0, "any": 0}
+
+        def callback(hwnd, _lparam):
+            p = wintypes.DWORD()
+            _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(p))
+            if int(p.value) != pid:
+                return True
+            if not found["any"]:
+                found["any"] = int(hwnd)
+            # 优先用可见的那个，但**不要求可见**——用户按 Ctrl+Alt+1 把窗口藏起来后，
+            # 仍然要能优雅关闭它（走 closeEvent 保存凭据），否则只能强杀。
+            if _user32.IsWindowVisible(hwnd):
+                found["visible"] = int(hwnd)
+                return False
+            return True
+
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND,
+                                             wintypes.LPARAM)
+        _user32.EnumWindows(EnumWindowsProc(callback), 0)
+        hwnd = found["visible"] or found["any"]
+        if hwnd:
+            return hwnd
+
+    # 兜底：pid 文件缺失时，退回按标题找（兼容旧版本）
+    found = {"hwnd": 0}
+
+    def by_title(hwnd, _lparam):
         buf = ctypes.create_unicode_buffer(256)
         try:
             _user32.GetWindowTextW(hwnd, buf, 256)
@@ -109,7 +138,9 @@ def find_window() -> int:
             return False
         return True
 
-    _user32.EnumWindows(EnumWindowsProc(callback), 0)
+    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND,
+                                         wintypes.LPARAM)
+    _user32.EnumWindows(EnumWindowsProc(by_title), 0)
     return found["hwnd"]
 
 
