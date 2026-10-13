@@ -1,4 +1,4 @@
-"""本地回环转发代理：主程序只和 127.0.0.1 说话，上游地址只存在于本进程内。
+﻿"""本地回环转发代理：主程序只和 127.0.0.1 说话，上游地址只存在于本进程内。
 
 **为什么做这个**
 主程序直接连 `api.deepseek.com` 时，任何按进程查看连接的工具（资源监视器、
@@ -29,20 +29,30 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-# 上游：只在代理进程内出现
-UPSTREAM_HOST = "api.deepseek.com"
+# 上游：只在代理进程内出现。
+# 换后端时这里要跟着改三处：host / UPSTREAM_PATH_PREFIX / 转发用的完整路径。
+# 之前把转发路径写死成 "/chat/completions"，换到带 /compatible-mode/v1 前缀的
+# OpenAI 兼容端点就会 404——所以路径必须由前缀拼出来，不能写死。
+UPSTREAM_HOST = "llm-69ai4267tbwdiss6.cn-beijing.maas.aliyuncs.com"
 UPSTREAM_PORT = 443
+UPSTREAM_PATH_PREFIX = "/compatible-mode/v1"
 
 # 本地令牌：主程序用它换取代理转发服务。
 # 不校验等于任何本机进程都能借用这个代理，校验是为了避免代理变成开放的 API 中转站。
 LOCAL_TOKEN = "audio-local-proxy"
 
-UPSTREAM_PATHS = ("/chat/completions",)
+UPSTREAM_PATH = f"{UPSTREAM_PATH_PREFIX}/chat/completions"
+
+# 本地契约：主程序只发短路径，跟后端换不换无关。
+# 真实上游路径由代理内部映射——否则主程序要跟着换后端改代码。
+LOCAL_PATHS = ("/chat/completions",)
+# 兼容：也接受主程序直接带上游前缀的写法
+UPSTREAM_PATHS = LOCAL_PATHS + (UPSTREAM_PATH,)
 
 
 def upstream_base_url() -> str:
     """仅供诊断用；主程序不应该调用它。"""
-    return f"https://{UPSTREAM_HOST}"
+    return f"https://{UPSTREAM_HOST}{UPSTREAM_PATH_PREFIX}"
 
 
 class ProxyHandler(BaseHTTPRequestHandler):
@@ -123,7 +133,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def _forward_buffered(self, payload: bytes) -> None:
         conn = _upstream()
         try:
-            conn.request("POST", "/chat/completions", body=payload, headers={
+            conn.request("POST", UPSTREAM_PATH, body=payload, headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key()}",
                 "Accept": "application/json",
@@ -149,7 +159,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     def _forward_stream(self, payload: bytes) -> None:
         conn = _upstream()
         try:
-            conn.request("POST", "/chat/completions", body=payload, headers={
+            conn.request("POST", UPSTREAM_PATH, body=payload, headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key()}",
                 "Accept": "text/event-stream",

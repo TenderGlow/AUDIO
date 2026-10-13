@@ -1,4 +1,4 @@
-# Audio · 悬浮解题助手
+﻿# Audio · 悬浮解题助手
 
 > ## ⚠ 改动本项目前必读（流程纪律）
 >
@@ -15,7 +15,7 @@
 > 代码已推到 GitHub：`git@github.com:TenderGlow/AUDIO.git`（private）。
 > 万一再出事，可以完整取回当前版本。
 
-无边框、始终置顶的悬浮窗：停在「解题」上 1.2 秒自动抓取当前屏幕，交给 **DeepSeek** 流式解题，
+无边框、始终置顶的悬浮窗：停在「解题」上 1.2 秒自动抓取当前屏幕，交给 **Qwen（阿里百炼，OpenAI 兼容）** 流式解题，
 思考链不显示，只留答案与解析。
 
 界面上**不加任何颜色、不加边框、不写任何说明文字**——只有与底色同源的小字。
@@ -53,7 +53,7 @@
 - 因为滚动范围与绘制同源，**永远不会滚过头出现空白**（原来两者不一致，是"往下滚一片空白"的根因）
 - 悬停进度线 20fps，且进度变化不足 2% 不重绘
 
-**关于"吐字慢"**：实测 DeepSeek 的**吐字速度是 562 字/秒**（290 字只要 0.5 秒），慢的是前面那 4.1 秒思考——那是 `reasoning_effort = "high"` 的代价。想要更快，把 `audio/config.py` 的 `reasoning_effort` 改成 `"low"`（约 1~2 秒出答案，思维链变短）。
+**关于"吐字慢"**：实测后端的**吐字速度是 562 字/秒**（290 字只要 0.5 秒），慢的是前面那 4.1 秒思考——那是 `reasoning_effort = "high"` 的代价。想要更快，把 `audio/config.py` 的 `reasoning_effort` 改成 `"low"`（约 1~2 秒出答案，思维链变短）。
 
 **防录屏 / 防截屏**
 
@@ -110,12 +110,33 @@ python main.py            :: 或双击 启动.bat
 | 按钮字号 | `font_button_size = 6`（四个按钮的小字，按宽度自动再缩放） |
 | 状态字号 | `font_status_size = 6` |
 | 悬浮宽高 | `268 × 219` px |
-| LLM | DeepSeek `deepseek-flash`（地址与 Key 都在代理进程里，主程序不持有） |
+| LLM | Qwen `qwen3.8-flash`（百炼 `compatible-mode/v1`）（地址与 Key 都在代理进程里，主程序不持有） |
 | 本地代理 | `use_local_proxy = True`（主程序只连 `127.0.0.1:8781`） |
 | 流式 | `stream = True`，超时 116s |
 | 思考档位 | `reasoning_effort = "high"`（思维链只在后台跑，界面不显示） |
 | 提示词 | 按「第 N 页 · 第 M 题」标注 → 【答案】→ 【简析】（≤2 句），无题跳过不臆造 |
 | 悬停时长 | 解题 1200 / 加页 900 / 重置 900 / 退出 2000 / 复制 800 ms |
+
+## 后端
+
+| 项 | 值 |
+| --- | --- |
+| 服务 | 阿里云百炼，OpenAI 兼容端点 `/compatible-mode/v1` |
+| 模型 | `qwen3.8-flash` |
+| 思考档位 | `reasoning_effort = "high"`（实测该端点接受此字段） |
+| 流式字段 | `reasoning_content`（思维链，只收不显示）+ `content`（正文） |
+
+**换后端要改三处，缺一处就会 404：**
+
+1. `audio/config.py` 的 `api_base` / `api_key` / `model`
+2. `audio/proxy.py` 的 `UPSTREAM_HOST` 和 `UPSTREAM_PATH_PREFIX`
+   —— 转发路径是由前缀拼出来的（`f"{prefix}/chat/completions"`），**不能写死 `/chat/completions`**，
+   换到带 `/compatible-mode/v1` 前缀的端点就会 404
+3. `%APPDATA%\Audio\settings.json` 里的同名三项 —— **它会覆盖 `config.py`**，
+   只改代码不删/更新这个文件，改动不生效（这是最容易漏的一步）
+
+本地契约保持简单：主程序只向 `127.0.0.1` 发 `POST /chat/completions`，
+上游路径由代理内部映射，换后端时主程序代码不用动。
 
 ## 本地回环代理（做什么、不做什么）
 
@@ -151,7 +172,7 @@ python main.py            :: 或双击 启动.bat
 箭头尺寸与左上角小圆圈一致（14×14），颜色、透明度与正文完全相同；每 50ms 滚 10px（约 200px/s），
 不会一下子冲到顶或底，滚到头自动停。正文也可直接用鼠标滚轮翻阅（一格约 45px）。
 
-DeepSeek 的 `reasoning_content`（思维链）**只在后台自己推理，界面任何位置都不显示**。
+后端的 `reasoning_content`（思维链）**只在后台自己推理，界面任何位置都不显示**。
 
 **颜色统一**：正文、状态、四个按钮、按钮进度线、小圆圈、上下箭头共用同一支"墨水"
 ——同一个颜色、同一档透明度（`alpha(前景色, 8%)`），没有任何彩色区分。

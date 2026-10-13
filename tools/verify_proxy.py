@@ -120,8 +120,22 @@ check("请求体不含 https:// 前缀的上游地址",
 check("请求体不含 api_key", s.api_key not in blob)
 
 print("\n=== 5. 代理端确实把上游隔离在代理进程内 ===")
-check("上游主机名是代理模块私有常量",
-      proxy_mod.UPSTREAM_HOST == "api.deepseek.com")
+# 不要把域名写死在断言里——换后端（DeepSeek -> Qwen）时这条会假失败。
+# 该验的是「代理自己知道上游是谁，且和 settings 里的 api_base 一致」。
+from urllib.parse import urlparse
+cfg_host = urlparse(s.api_base).hostname
+check("代理的 UPSTREAM_HOST 与 settings.api_base 一致",
+      proxy_mod.UPSTREAM_HOST == cfg_host,
+      f"代理={proxy_mod.UPSTREAM_HOST} 配置={cfg_host}")
+check("代理的路径前缀与 api_base 的 path 一致",
+      proxy_mod.UPSTREAM_PATH_PREFIX == urlparse(s.api_base).path,
+      f"代理={proxy_mod.UPSTREAM_PATH_PREFIX} 配置={urlparse(s.api_base).path}")
+check("上游完整路径以 chat/completions 结尾",
+      proxy_mod.UPSTREAM_PATH.endswith("/chat/completions"),
+      f"-> {proxy_mod.UPSTREAM_PATH}")
+check("本地契约仍是短路径（主程序不用知道上游前缀）",
+      proxy_mod.LOCAL_PATHS == ("/chat/completions",),
+      f"-> {proxy_mod.LOCAL_PATHS}")
 
 # llm.py 里允许出现主机名（模块文档里写了解释），但不能出现在**可执行代码**里。
 # 做法：把文档字符串和注释去掉后再查。

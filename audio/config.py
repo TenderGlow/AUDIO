@@ -36,9 +36,9 @@ class Settings:
 
     # ---- 二、模型与 API（写死，取自用户已填好的配置）----
     llm_mode: str = "api"
-    api_base: str = "https://api.deepseek.com"
-    api_key: str = "sk-71c9beab0554435da9be191857a6c32a"
-    model: str = "deepseek-flash"
+    api_base: str = "https://llm-69ai4267tbwdiss6.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+    api_key: str = "sk-ws-H.PHDYDYM.oUgC.MEUCIBpRihC4ob8BBH74cf8cBb__yCMj6LyBW4rEHJLUPL1GAiEA7V4Oj93Vx-Cuxl-DHZVTxtyq44NgwwOHF3rdkpb-D48"
+    model: str = "qwen3.8-flash"
     timeout_s: int = 116
     stream: bool = True               # 流式输出
 
