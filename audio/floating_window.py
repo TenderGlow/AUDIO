@@ -77,6 +77,19 @@ class FloatingWindow(QWidget):
         self._last_move_ts = 0.0
         self._was_on_top = self.settings.always_on_top
 
+        # 拖动 / 缩放状态。
+        # 这些必须在 _build_ui 之前初始化：mouseMoveEvent 一进来就读 _resize_mode /
+        # _dragging，没初始化会抛 AttributeError；而 PyQt 里事件回调抛异常会走
+        # qFatal 直接 abort —— 表现为"鼠标一动进窗口就闪退"（事件日志里
+        # Qt5Core.dll / 0xc0000409 就是这个）。
+        self._dragging = False
+        self._drag_offset = QPoint(0, 0)
+        self._drag_pending = False
+        self._resize_mode = False
+        self._resize_flags = ""
+        self._resize_geo = QRect(self.geometry())
+        self._resize_start = QPoint(0, 0)
+
         flags = Qt.FramelessWindowHint | Qt.Tool
         if self.settings.always_on_top:
             flags |= Qt.WindowStaysOnTopHint
