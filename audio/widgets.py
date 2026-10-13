@@ -330,7 +330,12 @@ class StrokedText(QWidget):
             painter.drawText(rect, int(Qt.AlignLeft | Qt.AlignVCenter), segment)
 
     def wheelEvent(self, event):
-        self.scroll_by(-event.angleDelta().y() * 0.375)
+        """一格滚轮 = 120 单位 → 45px（规格 4.5）。
+
+        正负号：滚轮往下（angleDelta > 0）内容应该往上走，scroll 增大。
+        之前写成 `-angleDelta * 0.375` 把方向弄反了，滚轮上下颠倒。
+        """
+        self.scroll_by(event.angleDelta().y() * 0.375)
         event.accept()
 
 
@@ -538,16 +543,23 @@ class DragMarker(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
         color = QColor(self._fg)
-        if self.progress >= 1.0:
-            color = QColor(self._fg)
         rect = QRectF(self.rect())
-        pen = QPen(color)
-        pen.setWidthF(1.0)
-        painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
         inner = rect.adjusted(3.0, 3.0, -3.0, -3.0)
-        if self.progress > 0.001:
-            painter.drawArc(inner, 0, int(360 * 16 * min(1.0, self.progress)))
+
+        if self.progress > 0.001 and self.progress < 1.0:
+            # 悬停计满过程中：空心圆 + 进度弧
+            painter.setPen(QPen(color))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawArc(inner, 90 * 16,
+                            int(-360 * 16 * min(1.0, self.progress)))
+        elif self.progress >= 1.0:
+            # 计满 = 进入跟随模式：实心
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
+        else:
+            # 常态：规格要求「纯色实心圆点，无描边」
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
         painter.drawEllipse(inner)
 
 
@@ -567,17 +579,31 @@ class ScrollArrow(QWidget):
         self.step_ms = 50
         self._fg = QColor(0, 0, 0, 255)
         self._hovering = False
+        # 由外部在滚动后回填：这个方向是否已经到头（到头就停表，不空转）
+        self._at_bound = False
         self.setMouseTracking(True)
         self._ticker = QTimer(self)
         self._ticker.setInterval(self.step_ms)
         self._ticker.timeout.connect(self._tick)
+
+    def notify_position(self, at_top: bool, at_bottom: bool) -> None:
+        """主窗口滚动后告知当前边界状态。
+
+        到头后计时器已经停了；一旦又离开边界（内容变长/变短），要把
+        `_at_bound` 复位，否则下次悬停会一动不动。
+        """
+        self._at_bound = at_top if self.direction == "up" else at_bottom
 
     def set_fg(self, color) -> None:
         self._fg = qcolor(color)
         self.update()
 
     def _tick(self) -> None:
+        """持续滚动。规格（4.5）：已经到顶/底时计时器自动停止，不在边界空转。"""
         if not self._hovering:
+            self._ticker.stop()
+            return
+        if self._at_bound:
             self._ticker.stop()
             return
         delta = -self.step_px if self.direction == "up" else self.step_px

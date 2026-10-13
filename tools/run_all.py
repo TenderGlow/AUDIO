@@ -1,4 +1,4 @@
-"""跑全部自检套件。
+﻿"""跑全部自检套件。
 
 注意：不能一上来就对所有套件设 `QT_QPA_PLATFORM=offscreen`。
 `verify_anticapture` / `verify_shutdown` 需要**真实** Windows 平台——
@@ -22,6 +22,7 @@ SUITES = [
     ("verify_isolation.py", True),
     ("verify_orphan.py", True),
     ("verify_resize.py", True),
+    ("verify_widgets.py", True),
     ("verify_anticapture.py", False),   # 真实平台
     ("verify_shutdown.py", False),      # 真实平台
     ("verify_capture.py", False),       # 真实平台：像素级证明

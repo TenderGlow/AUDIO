@@ -744,10 +744,15 @@ class FloatingWindow(QWidget):
         self._refresh_arrows()
 
     def _refresh_arrows(self) -> None:
-        """箭头只在正文可滚动时才出现。"""
+        """箭头只在正文可滚动时才出现；同时把边界状态告诉箭头，让它到头就停表。"""
         scrollable = self.body.max_scroll() > 0.5
         self.arrow_up.setVisible(scrollable)
         self.arrow_down.setVisible(scrollable)
+        # 规格 4.5：到顶/到底时悬停计时器自动停止，不在边界空转
+        scroll = self.body._scroll
+        max_scroll = self.body.max_scroll()
+        self.arrow_up.notify_position(scroll <= 0.5, False)
+        self.arrow_down.notify_position(False, scroll >= max_scroll - 0.5)
 
     # ------------------------------------------------------------------
     # 原生消息：热键分发
