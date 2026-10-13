@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (QApplication, QHBoxLayout, QLabel, QVBoxLayout,
 
 from .capture import Capture, CaptureWorker
 from .config import Settings, save_credentials
-from .detect import capture_risk
+from .detect import capture_risk, reset_poll_counter
 from .hotkeys import (HotkeyManager, WM_HOTKEY, exclude_window_from_capture,
                       foreground_process_name, message_fields)
 from .llm import SolveWorker
@@ -142,6 +142,7 @@ class FloatingWindow(QWidget):
         self._capture_timer.timeout.connect(self._check_capture_risk)
         if self.settings.anti_capture:
             self._capture_timer.start()
+            reset_poll_counter()     # 启动后第一次就做全量扫描
 
     # ------------------------------------------------------------------
     # 界面

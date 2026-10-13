@@ -19,6 +19,7 @@ from PyQt5.QtGui import (QBrush, QColor, QFont, QFontMetricsF, QPainter,
 from PyQt5.QtWidgets import QWidget
 
 MAX_STROKE_PX = 2.6          # 描边宽度上限，防止把字撑肥糊成一团
+PATH_CACHE_MAX = 400         # 字形轮廓缓存上限（条）。流式时可见行远小于这个数。
 
 
 # ---------------------------------------------------------------- 颜色工具
@@ -112,6 +113,7 @@ class StrokedText(QWidget):
         self._line_start = 0                      # 当前行的起始字符下标
         self._line_used = 0.0                     # 当前行已占用的宽度
         self._m_width = 0.0
+        self._path_cache: dict = {}       # 字形轮廓缓存：(文字, 字号, 加粗) -> path
         self._m_metrics: QFontMetricsF | None = None
         self._m_line_height = 0.0
         self._m_cache_key = None
@@ -131,6 +133,7 @@ class StrokedText(QWidget):
             self._m_metrics = QFontMetricsF(font)
             self._m_line_height = self._m_metrics.lineSpacing()
             self._m_cache_key = key
+            self._path_cache.clear()      # 字号/加粗变了，旧轮廓作废
             self._reset_measure()
         return self._m_metrics
 
@@ -322,8 +325,17 @@ class StrokedText(QWidget):
                 continue
             top = self._padding + index * line_height - self._scroll
             baseline = top + ascent
-            path = QPainterPath()
-            path.addText(left, baseline, font, segment)
+
+            # 字形轮廓缓存：addText（把文字转成轮廓路径）实测占单行开销的 75%，
+            # 而流式输出时 9 行可见里只有最后 1 行在变。缓存后同一段文字只构建一次。
+            # 关键：path 在**原点**构建，再用 painter.translate 定位，
+            # 否则 baseline 每行不同，缓存就命中不了。
+            path = self._path_for(segment)
+            if path is None:
+                continue
+
+            painter.save()
+            painter.translate(left, baseline)
             if stroked:
                 # 注意：PyQt5 的 strokePath(path, pen) **必须显式传笔**，
                 # 只传 path 会 TypeError；而这里是 paintEvent，异常直接 qFatal 闪退。
@@ -331,6 +343,20 @@ class StrokedText(QWidget):
                 painter.strokePath(path, stroke_pen)
             painter.setPen(Qt.NoPen)
             painter.fillPath(path, fill)
+            painter.restore()
+
+    def _path_for(self, segment: str):
+        """按 (文字, 字号, 加粗) 缓存字形轮廓；字体变化时整体作废。"""
+        key = (segment, self._font_size, self._bold)
+        path = self._path_cache.get(key)
+        if path is None:
+            path = QPainterPath()
+            # 基线放在原点，后面靠 translate 定位
+            path.addText(0.0, 0.0, make_font(self._font_size, self._bold), segment)
+            if len(self._path_cache) >= PATH_CACHE_MAX:
+                self._path_cache.clear()      # 流式长文本时整体淘汰即可，不必精�� LRU
+            self._path_cache[key] = path
+        return path
 
     def wheelEvent(self, event):
         """一格滚轮 = 120 单位 → 45px（规格 4.5）。
