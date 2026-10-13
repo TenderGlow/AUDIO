@@ -57,13 +57,35 @@
 
 **防录屏 / 防截屏**
 
-- 窗口带 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`：这是**硬保证**，本地照常可见，
-  但不会被任何截图 / 录屏 / 屏幕共享收进去。
-  *实测：同一窗口设 0x11 后，BitBlt 抓到的像素从 40000 降到 0。*
-- `showEvent` 每次显示都重新设置一遍——`setWindowFlag` 会重建原生窗口句柄，affinity 会丢。
-- 额外还有一层主动隐藏：每 700ms 检查一次有没有录屏 / 截屏工具在跑（OBS、XSplit、Bandicam、
-  Snipaste、Xbox Game Bar 等），一旦发现就先藏起来，撤掉后自动回来。
-  这一层是为了避免某些工具把窗口画成黑块或残影。
+窗口用了三层防护，任何一层单独失效都还有兜底：
+
+| 层 | 机制 | 作用范围 |
+| --- | --- | --- |
+| 1 | `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` = `0x11` | 系统级捕获（Windows Graphics Capture、DXGI 桌面复制、屏幕共享） |
+| 2 | 窗口是**分层窗口**（`WS_EX_LAYERED`，因为 `WA_TranslucentBackground`） | GDI `BitBlt` 类捕获**本来就看不到**分层窗口 |
+| 3 | 主动隐藏 | 检测到录屏/截屏程序在跑就先藏起来（见下） |
+
+实测证据（`tools/verify_screen.py`，12 项）：
+
+- 真实运行窗口的 affinity 直接读出来就是 `0x11`，`exstyle = 0x08080088`
+- 同款窗口设了排除后，BitBlt 抓到的像素 **0 个**；**临时关掉排除能抓到 32104 个**
+  （反证：证明测量方法本身有效，不是"碰巧抓不到"）
+- 走程序**真实的抓屏路径**（解题/加页那条），把同一块区域在"窗口显示"与
+  "窗口隐藏"两种状态下各抓一次：**差异像素 0/40992**，即窗口根本没进图
+- 抓屏连续 3 次无异常；整屏近黑像素占比 0.0%（没有"被排除窗口留黑块"的迹象）
+
+`showEvent` 每次显示都重设一遍——`setWindowFlag` 会重建原生窗口句柄，affinity 会丢。
+
+第三层：每 700ms 检查一次有没有录屏 / 截屏工具在跑（OBS、XSplit、Bandicam、
+Snipaste、Xbox Game Bar 等），一旦发现就先藏起来，撤掉后自动回来。
+这一层是为了避免某些工具把窗口画成黑块或残影。
+
+> **必须如实说明的风险**：`WDA_EXCLUDEFROMCAPTURE` 是**可被检测**的。
+> 它本来是给 DRM / 隐私场景设计的正规 API，但"让窗口从捕获里消失"也正是
+> 屏幕监考（proctoring）、反作弊、部分企业合规软件**专门盯的特征**。
+> 也就是说：普通录屏 / 截屏 / Chrome 屏幕共享下它按预期工作（上面已实测），
+> 但如果对方跑的是监考类软件，这个标志本身可能被识别成异常行为。
+> 这是机制本身的属性，不是配置问题；本机无法替外部程序断言它们会怎么做。
 
 ## 不用了怎么关掉
 
@@ -203,6 +225,8 @@ tools/
 ├── verify_anticapture.py    抓屏排除 / 录屏检测 / 三个热键
 ├── verify_shutdown.py       后台启停 / 无残留
 ├── verify_capture.py        WDA_EXCLUDEFROMCAPTURE 像素级证明
+├── verify_five.py           五项复核：进程名/窗口列表/焦点/录屏/父进程路径
+├── verify_screen.py         抓屏专项：窗口不进捕获 + 自身抓屏不含自身 + 无异常
 └── harness.py               测试公用：清残留进程、枚举进程
 ```
 

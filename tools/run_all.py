@@ -30,6 +30,7 @@ SUITES = [
     ("verify_widgets.py", True),
     # 以下必须在真实 Windows 平台
     ("verify_privacy.py", False),
+    ("verify_screen.py", False),     # 真实平台：抓屏专项复核
     ("verify_five.py", False),      # 真实平台：五项复核
     ("verify_anticapture.py", False),
     ("verify_shutdown.py", False),
