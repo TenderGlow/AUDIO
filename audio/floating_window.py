@@ -30,7 +30,7 @@ from .theme import MIN_SIZE, get_theme
 from .widgets import (DragMarker, HoverButton, RoundedPanel, ScrollArrow,
                       StrokedText, alpha, make_font, stroke_scale)
 
-EDGE = 6          # 边缘缩放感应区宽度(px)
+EDGE = 8          # 边缘缩放感应区宽度(px)，规格见设计文档 7.2
 TITLE_BAR = 22    # 顶部标题条高度(px)
 
 # 界面上不写任何功能说明，正文留空，等大模型给结果
@@ -301,33 +301,37 @@ class FloatingWindow(QWidget):
     # 移动 / 缩放
     # ------------------------------------------------------------------
     def _edge_at(self, pos: QPoint) -> str:
-        left, right = pos.x() <= EDGE, pos.x() >= self.width() - EDGE
-        top, bottom = pos.y() <= EDGE, pos.y() >= self.height() - EDGE
+        """命中哪几条边。返回规范化后的组合（"lt"/"rb"/"l"/…），空串表示没命中。"""
+        left = pos.x() <= EDGE
+        right = pos.x() >= self.width() - EDGE
+        top = pos.y() <= EDGE
+        bottom = pos.y() >= self.height() - EDGE
+        # 规范顺序：先左右(l/r) 再上下(t/b)，这样 "l"+"t" -> "lt"
         mode = ""
-        if top:
-            mode += "t"
-        if bottom:
-            mode += "b"
         if left:
             mode += "l"
         if right:
             mode += "r"
+        if top:
+            mode += "t"
+        if bottom:
+            mode += "b"
         return mode
 
+    # 四边 + 四角共 8 种光标。键是**排序后**的组合，
+    # 因为 _cursor_for 会先 sorted() 再查表（"lb" 排序后是 "bl"）。
     _CURSORS = {
         "l": Qt.SizeHorCursor, "r": Qt.SizeHorCursor,
         "t": Qt.SizeVerCursor, "b": Qt.SizeVerCursor,
-        "lt": Qt.SizeBDiagCursor, "br": Qt.SizeBDiagCursor,
-        "lb": Qt.SizeFDiagCursor, "tr": Qt.SizeFDiagCursor,
+        "lt": Qt.SizeBDiagCursor, "rt": Qt.SizeFDiagCursor,
+        "bl": Qt.SizeFDiagCursor, "br": Qt.SizeBDiagCursor,
     }
 
     def _cursor_for(self, mode: str) -> Qt.CursorShape:
         if not mode:
             return Qt.ArrowCursor
-        if len(mode) == 1:
-            return self._CURSORS[mode]
-        key = "".join(sorted(mode))
-        return self._CURSORS.get(key, Qt.ArrowCursor)
+        # 角上的两个字母必须转成规范顺序再查表：l+t -> "lt"，t+l -> 同样是 "lt"
+        return self._CURSORS.get("".join(sorted(mode)), Qt.ArrowCursor)
 
     def mouseMoveEvent(self, event):
         mode = self._edge_at(event.pos())
@@ -348,13 +352,15 @@ class FloatingWindow(QWidget):
         mode = self._edge_at(event.pos())
         if mode:
             self._resize_mode = True
-            self._resize_anchor = event.globalPos() - self.pos()
+            self._resize_flags = mode          # "l"/"r"/"t"/"b"/"lt"/"rb"/...
             self._resize_geo = QRect(self.geometry())
+            self._resize_start = event.globalPos()
         else:
             self._dragging = False
 
     def mouseReleaseEvent(self, _event):
         self._resize_mode = False
+        self._resize_flags = ""
         self._dragging = False
         QTimer.singleShot(0, self._refresh_arrows)
 
@@ -367,19 +373,39 @@ class FloatingWindow(QWidget):
         if self._move_mode:
             self._move_ts = time.monotonic()
 
-    def _do_resize(self, pos: QPoint, _global: QPoint) -> None:
-        geo = QRect(self._resize_geo)
-        if "l" in self._resize_mode_flags():
-            pass
-        # 简化：以当前鼠标位置与按下时的差值决定新边
-        delta = pos - self._resize_anchor
-        anchor = self._resize_geo.topLeft()
-        w = max(MIN_SIZE[0], self._resize_geo.width() + delta.x())
-        h = max(MIN_SIZE[1], self._resize_geo.height() + delta.y())
-        self.setGeometry(anchor.x(), anchor.y(), w, h)
+    def _do_resize(self, pos: QPoint, global_pos: QPoint) -> None:
+        """按文档规格：四边 + 四角共 8 种逻辑，下限 180×140。
 
-    def _resize_mode_flags(self) -> str:
-        return getattr(self, "_resize_flags", "")
+        之前这版是空壳（只认右下），拖左边/上边完全没反应。
+        这里按"按下时的几何 + 当前位移"重新解算四条边。
+        """
+        geo = self._resize_geo
+        left, top = geo.left(), geo.top()
+        right, bottom = geo.right(), geo.bottom()
+        flags = self._resize_flags
+        dx = global_pos.x() - self._resize_start.x()
+        dy = global_pos.y() - self._resize_start.y()
+
+        min_w, min_h = MIN_SIZE
+        if "l" in flags:
+            new_left = left + dx
+            if right - new_left + 1 >= min_w:      # right() 是闭区间，宽度要 +1
+                left = new_left
+        if "r" in flags:
+            new_right = right + dx
+            if new_right - left + 1 >= min_w:
+                right = new_right
+        if "t" in flags:
+            new_top = top + dy
+            if bottom - new_top + 1 >= min_h:
+                top = new_top
+        if "b" in flags:
+            new_bottom = bottom + dy
+            if new_bottom - top + 1 >= min_h:
+                bottom = new_bottom
+
+        self.setGeometry(QRect(left, top, right - left + 1, bottom - top + 1))
+        QTimer.singleShot(0, self._refresh_arrows)
 
     def _on_proxy(self, event) -> None:
         """标题条事件转发：按住拖动。"""

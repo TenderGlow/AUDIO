@@ -21,6 +21,7 @@ SUITES = [
     ("verify_proxy.py", True),
     ("verify_isolation.py", True),
     ("verify_orphan.py", True),
+    ("verify_resize.py", True),
     ("verify_anticapture.py", False),   # 真实平台
     ("verify_shutdown.py", False),      # 真实平台
     ("verify_capture.py", False),       # 真实平台：像素级证明

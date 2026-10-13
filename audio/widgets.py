@@ -108,8 +108,10 @@ class StrokedText(QWidget):
         self._padding = 8
         self._scroll = 0.0
         # --- 增量换行：流式追加时只处理新增字符 ---
-        self._lines: list[tuple[int, int]] = []   # [(start, end), ...] 字符下标
+        self._lines: list[tuple[int, int]] = []   # [(start, end), ...] 最后一项是当前行
         self._wrapped_from = 0                    # 已经处理到的字符位置
+        self._line_start = 0                      # 当前行的起始字符下标
+        self._line_used = 0.0                     # 当前行已占用的宽度
         self._m_width = 0.0
         self._m_metrics: QFontMetricsF | None = None
         self._m_line_height = 0.0
@@ -133,11 +135,17 @@ class StrokedText(QWidget):
             self._reset_measure()
         return self._m_metrics
 
+    def _reset_lines(self) -> None:
+        """行表作废，从头重量（宽度变了才需要）。"""
+        self._wrapped_from = 0
+        self._lines = []
+        self._line_start = 0
+        self._line_used = 0.0
+
     def _reset_measure(self) -> None:
         """宽度/字号变了，行表作废，下次重新量。"""
         self._m_width = 0.0
-        self._wrapped_from = 0
-        self._lines = []
+        self._reset_lines()
         self._scroll = 0.0
         self.updateGeometry()
         self.update()
@@ -148,49 +156,54 @@ class StrokedText(QWidget):
     def _wrap(self) -> list[tuple[int, int]]:
         """增量换行：只处理 _wrapped_from 之后的新字符。
 
-        逐字符推进是因为 CJK 可以在任意位置断行；维护一个"当前行是否还有余量"的
-        游标，新字符追加时接着往下走即可，单次成本与新增字符数成正比。
+        行表 `self._lines` 是 (start, end) 字符下标列表，**最后一项是正在填的那一行**。
+        断行时做两件事：把当前行的 end 定死，再 append 一个新行。
+
+        踩过的坑：早先写成 `self._lines[-1] = (start, i)`，那是在**覆盖**最后一行而不是追加，
+        结果整篇文本永远只有 1 行，内容高度恒为 11px。
+        另外必须显式处理 '\\n'——模型输出几乎全是硬换行，忽略它排版就全乱。
+
+        游标 (_wrapped_from / _line_start / _line_used) 让追加的边际成本
+        与新增字符数成正比，流式输出时不会退化成 O(n^2)。
         """
         metrics = self._metrics()
         width = self._usable_width()
         if width != self._m_width:
             # 宽度变了必须整篇重量
             self._m_width = width
-            self._wrapped_from = 0
-            self._lines = []
+            self._reset_lines()
+
+        if not self._lines:
+            self._lines = [(0, 0)]
+            self._line_start = 0
+            self._line_used = 0.0
 
         text = self._text
-        if self._wrapped_from == 0:
-            self._lines = []
-            self._lines.append((0, 0))   # 起点空行，保证永远至少有一行
-
-        # 找到上次结束的最后一行的起点
-        if self._lines:
-            line_start = self._lines[-1][0]
-        else:
-            line_start = 0
-        used = 0.0
-        if line_start < len(text):
-            used = metrics.horizontalAdvance(text[line_start:self._wrapped_from]) \
-                if self._wrapped_from > line_start else 0.0
-        elif self._lines:
-            used = 0.0
-
         i = self._wrapped_from
         n = len(text)
         while i < n:
             ch = text[i]
-            advance = metrics.horizontalAdvance(ch)
-            if used + advance > width and (i - line_start) > 0:
-                # 当前行放不下这一行 -> 断行
-                self._lines[-1] = (self._lines[-1][0], i)
-                line_start = i
-                used = 0.0
+            if ch == "\n":
+                # 硬换行：当前行到 i 结束（不含换行符本身），新行从 i+1 开始
+                self._lines[-1] = (self._line_start, i)
+                self._lines.append((i + 1, i + 1))
+                self._line_start = i + 1
+                self._line_used = 0.0
+                i += 1
                 continue
-            used += advance
+            advance = metrics.horizontalAdvance(ch)
+            if self._line_used + advance > width and i > self._line_start:
+                # 放不下 -> 当前行到 i 结束，开新行
+                self._lines[-1] = (self._line_start, i)
+                self._lines.append((i, i))
+                self._line_start = i
+                self._line_used = 0.0
+                continue
+            self._line_used += advance
             i += 1
-        if n > self._wrapped_from:
-            self._lines[-1] = (self._lines[-1][0], n)
+
+        # 最后一行补齐（文本以 \\n 结尾时这就是那个空的尾行）
+        self._lines[-1] = (self._line_start, n)
         self._wrapped_from = n
         return self._lines
 
