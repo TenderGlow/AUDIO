@@ -15,6 +15,19 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def is_project_proc(cmdline: str) -> bool:
+    """这条命令行是不是"真的在跑本项目"。
+
+    为什么不能用"命令行里含 cloudSyncG"来判：套件自己就是从
+    `<项目目录>\\tools\\verify_xxx.py` 启动的，命令行里必然带这四个字，
+    于是套件会把自己当成残留进程，"可正常停止且无残留"这类断言永远失败。
+    真正要认的是这两种：以脚本方式跑入口，或以模块方式跑代理。
+    """
+    return ("cloudSyncG-main.py" in cmdline
+            or "cloudSyncG.proxy" in cmdline
+            or "cloudSyncG-main" in cmdline)
+
+
 def list_project_procs():
     """返回 [(pid, cmdline)]，只含本项目的 python 进程。"""
     out = subprocess.run(
@@ -33,7 +46,7 @@ def list_project_procs():
         data = [data]
     for d in data:
         cmd = (d.get("CommandLine") or "")
-        if "cloudSyncG-main.py" in cmd or "cloudSyncG.proxy" in cmd:
+        if is_project_proc(cmd):
             rows.append((int(d["ProcessId"]), cmd))
     return rows
 

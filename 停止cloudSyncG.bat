@@ -1,9 +1,12 @@
 @echo off
-chcp 65001 >nul
-title åœæ­¢ cloudSyncG
+title Í£Ö¹ CloudSync
 cd /d "%~dp0"
-echo æ­£åœ¨åœæ­¢ cloudSyncG æ‚¬æµ®çª—...
-python -m cloudSyncG.shutdown stop
+rem ÕâÒ»ÌõÃüÁîÍ¬Ê±»áÍ£µôĞü¸¡´°½ø³ÌºÍ¼à¿Ø½ø³Ì£¨¼à¿Ø²»»á±»"ÔÙÀ­ÆğÀ´"£©
+if exist "%~dp0dist\CloudSync.exe" (
+  "%~dp0dist\CloudSync.exe" --stop
+) else (
+  python -m cloudSyncG.shutdown stop
+)
 echo.
 pause
 exit

@@ -118,6 +118,28 @@ check("黑名单命中逻辑有效（模拟 python 在黑名单）", "python" in
       f"-> 命中 {sorted(hit)[:3]}")
 detect.RECORDER_PROCESSES = orig
 
+# 常驻型程序（Steam / 向日葵 / Zoom…）开着不代表在录屏。
+# 它们几乎总是开着，早先把它们也算进风险，导致"开着游戏/远程软件期间
+# 悬浮窗一直不出现"，而这窗口又不在任务栏也不在托盘，用户根本找不回来。
+print("\n=== 3b. 常驻型程序不再导致误隐藏 ===")
+orig_names = detect.list_process_names
+detect.list_process_names = lambda: {"steam", "steamwebhelper", "sunloginclient",
+                                     "notepad", "obsidian"}
+check("默认：Steam/向日葵/Obsidian 都不算风险",
+      detect.recorder_processes_running() == set(),
+      f"-> {sorted(detect.recorder_processes_running())}")
+check("strict=True：仍然按老规矩把它们算作风险",
+      detect.recorder_processes_running(strict=True) == {"steam", "steamwebhelper",
+                                                         "sunloginclient"},
+      f"-> {sorted(detect.recorder_processes_running(strict=True))}")
+detect.list_process_names = lambda: {"obs64"}
+check("真正的 OBS 依然会被抓出来",
+      detect.recorder_processes_running() == {"obs64"},
+      f"-> {sorted(detect.recorder_processes_running())}")
+detect.list_process_names = orig_names
+check("默认配置 capture_hide_strict 为 False",
+      Settings().capture_hide_strict is False)
+
 print("\n=== 4. 主动隐藏 / 自动恢复 ===")
 win._self_hidden = False
 win._was_visible_before_hide = False
@@ -127,12 +149,12 @@ check("初始状态未隐藏", win.isVisible())
 win._capture_timer.stop()
 orig_risk = detect.capture_risk
 import cloudSyncG.floating_window as fw
-fw.capture_risk = lambda: (True, "模拟录屏中")
+fw.capture_risk = lambda strict=False: (True, "模拟录屏中")
 win._check_capture_risk()
 check("检测到录屏后自动隐藏", not win.isVisible())
 
 # 解除
-fw.capture_risk = lambda: (False, "")
+fw.capture_risk = lambda strict=False: (False, "")
 win._check_capture_risk()
 check("录屏消失后自动恢复", win.isVisible())
 

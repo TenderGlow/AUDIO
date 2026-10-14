@@ -40,6 +40,13 @@ def check(label, cond, extra=""):
 
 
 def procs():
+    """当前在跑的本项目实例进程（主程序 + 代理）。
+
+    匹配条件必须是"命令行里真的在跑 cloudSyncG-main.py / cloudSyncG.proxy"，
+    不能只匹配 "cloudSyncG" 这四个字——套件自己的命令行里就带着项目路径
+    （run_all 用绝对路径启动时是 `...\\cloudSyncG\\tools\\verify_screen.py`），
+    那样连**自己**都会被算成残留，"可正常停止且无残留"就永远失败。
+    """
     out = subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command",
          "Get-CimInstance Win32_Process -Filter \"Name='python.exe' OR Name='pythonw.exe'\" | "
@@ -51,10 +58,10 @@ def procs():
     d = json.loads(out)
     if isinstance(d, dict):
         d = [d]
-    return [r for r in d if "cloudSyncG" in (r.get("CommandLine") or "")]
+    return [r for r in d if is_project_proc(r.get("CommandLine") or "")]
 
 
-from harness import cleanup_all, wait_for  # noqa: E402
+from harness import cleanup_all, wait_for, is_project_proc  # noqa: E402
 
 cleanup_all()
 print("\n=== 启动真实实例 ===")

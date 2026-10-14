@@ -26,6 +26,9 @@ from .detect import capture_risk, reset_poll_counter
 from .hotkeys import (HotkeyManager, WM_HOTKEY, exclude_window_from_capture,
                       foreground_process_name, message_fields)
 from .llm import SolveWorker
+from .runtime import (clear_hidden, hide_bootloader_windows, log_event,
+                      mark_hidden, mark_user_exit, publish_window_handle,
+                      remove_window_handle)
 from .theme import MIN_SIZE, get_theme
 from .widgets import (DragMarker, HoverButton, RoundedPanel, ScrollArrow,
                       StrokedText, alpha, make_font, stroke_scale)
@@ -97,12 +100,18 @@ class FloatingWindow(QWidget):
         self._resize_geo = QRect(self.geometry())
         self._resize_start = QPoint(0, 0)
 
+        # 属性必须**先于**窗口标志设置。setWindowFlags() 内部会立刻 create() 出
+        # 原生窗口，而"窗口要不要分层（透明）"是在创建那一刻决定的；
+        # 先设标志、后设透明属性的话，原生窗口会先按不透明创建，
+        # 于是屏幕上先蹦出一块**白色实心板子**，等第一次 paint 画上透明背景
+        # 才变成正常的悬浮窗。顺序反过来就完全没有这一下。
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+
         flags = Qt.FramelessWindowHint | Qt.Tool
         if self.settings.always_on_top:
             flags |= Qt.WindowStaysOnTopHint
         self.setWindowFlags(flags)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setMouseTracking(True)
         self.setMinimumSize(*MIN_SIZE)
         self.resize(self.settings.width, self.settings.height)
@@ -110,6 +119,15 @@ class FloatingWindow(QWidget):
         # 无标题窗口会被直接跳过。留着标题就等于把自己送到选择器列表里。
         # 外部停止程序改用 PID 精确匹配（见 cloudSyncG/shutdown.py），不依赖标题。
         self.setWindowTitle("")
+        # 任务栏/置顶样式在这里就钉死，而不是等到 showEvent：
+        # 越早设置，越不存在"某一帧突然在任务栏冒出一个按钮"的窗口期。
+        self.create()
+        self._ensure_no_taskbar()
+        self._clear_native_title()
+        # 把窗口句柄登记给外部兜底监控：它只认这份登记，不会认错窗口
+        # （早先它靠"按进程枚举顶层窗口"去找，逮到了 onefile 引导的白板）
+        publish_window_handle(int(self.winId()))
+        QTimer.singleShot(0, self._register_window_handle)
 
         self._build_ui()
         self.apply_settings(self.settings, persist=False)
@@ -154,6 +172,12 @@ class FloatingWindow(QWidget):
         if self.settings.anti_capture:
             self._capture_timer.start()
             reset_poll_counter()     # 启动后第一次就做全量扫描
+
+        # 置顶心跳：别的程序进全屏会把悬浮窗压下去，靠它自己顶回来
+        self._topmost_timer = QTimer(self)
+        self._topmost_timer.setInterval(1500)
+        self._topmost_timer.timeout.connect(self._keep_on_top)
+        self._topmost_timer.start()
 
     # ------------------------------------------------------------------
     # 界面
@@ -507,20 +531,52 @@ class FloatingWindow(QWidget):
 
         兜底已有 `WDA_EXCLUDEFROMCAPTURE`，这一层是为了避免某些捕获工具
         把窗口画成一个黑块或残影——提前躲开更干净。
+
+        隐藏原因会写进 watchdog.log：窗口一旦"人不在场"地消失，
+        最难查的就是"到底是谁把它藏了"，日志里能直接看到答案。
         """
         if not self.settings.anti_capture:
             return
-        risky, _reason = capture_risk()
+        risky, reason = capture_risk(strict=self.settings.capture_hide_strict)
         if risky and not self._self_hidden:
             self._was_visible_before_hide = self.isVisible()
             self._self_hidden = True
             if self._was_visible_before_hide:
-                self.hide()
+                self._self_hide()
+            log_event(f"检测到抓屏风险，自动隐藏：{reason}")
         elif not risky and self._self_hidden:
             self._self_hidden = False
             if self._was_visible_before_hide:
-                self.show()
+                self._self_show()
                 self._force_topmost()
+                log_event("抓屏风险解除，恢复显示")
+            else:
+                log_event("抓屏风险解除（之前就是藏着的，保持原样）")
+
+    def _register_window_handle(self) -> None:
+        """把当前窗口句柄登记给外部兜底监控。
+
+        必须每次显示都重新登记：`setWindowFlag()` 会重建原生窗口，
+        句柄随之改变，不更新的话监控手里就是个已经失效的旧句柄。
+        """
+        publish_window_handle(int(self.winId()))
+        # 顺带再藏一次 onefile 白板：它可能比 Python 代码跑起来还早
+        hide_bootloader_windows()
+
+    def _self_hide(self) -> None:
+        """主动隐藏窗口，并登记"是我自己要藏的"。
+
+        登记这件事是给外部兜底监控看的：它每秒钟都会检查窗口还在不在，
+        但不能把用户刚按下的隐藏键给撤销了。写标记文件就是双方约定的
+        "放行信号"。见 runtime.HIDDEN_FLAG。
+        """
+        mark_hidden()
+        self.hide()
+
+    def _self_show(self) -> None:
+        """显示窗口，并撤掉"主动隐藏"的登记。"""
+        clear_hidden()
+        self.show()
 
     def _ensure_no_taskbar(self) -> None:
         """保险措施：永远不给窗口任务栏按钮，也不创建托盘图标。"""
@@ -541,7 +597,12 @@ class FloatingWindow(QWidget):
     # 顶置 + 显隐
     # ------------------------------------------------------------------
     def _force_topmost(self) -> None:
-        if not self.settings.always_on_top:
+        """把窗口重新顶到最前。
+
+        注意 `SWP_SHOWWINDOW` 的副作用：它会**显示**窗口。所以必须只在
+        "当前确实可见"时调用，否则会把用户用 Ctrl+Alt+1 藏起来的窗口又弹出来。
+        """
+        if not self.settings.always_on_top or not self.isVisible():
             return
         try:
             HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW = -1, 0x2, 0x1, 0x40
@@ -550,6 +611,45 @@ class FloatingWindow(QWidget):
                 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
         except Exception:  # noqa: BLE001 - 非 Windows / 权限不足时忽略
             pass
+
+    def _keep_on_top(self) -> None:
+        """心跳：定期把置顶重新摁回去，并把跑出屏幕的窗口拉回来。
+
+        **为什么必须定期做置顶**：别的程序一进全屏（F11、专注模式、最大化、
+        某些游戏的独占全屏），会把 z 序重新洗一遍，悬浮窗就被压到它下面去了。
+        `Qt.WindowStaysOnTopHint` 只保证"新建/显示时"置顶，管不了别人之后抢占；
+        而这窗口不在任务栏、不在托盘，一旦被压下去，用户看到的就只是
+        "它凭空没了"，连往哪找都不知道。
+
+        每 1.5 秒重新声明一次——一次 `SetWindowPos` 的开销可以忽略，
+        换来的是任何全屏/最大化切换之后它都自己回到最前面。
+
+        **顺带把出界的窗口拉回来**：独占全屏会切换分辨率（比如 2560x1600 →
+        1920x1080），原来贴在屏幕边上的窗口就落到可见区域外面去了，
+        同样表现为"不见了"。
+        """
+        if not self.settings.always_on_top:
+            return
+        if not (self.isVisible() and not self.isMinimized()):
+            return
+        self._force_topmost()
+        self._pull_back_if_offscreen()
+
+    def _pull_back_if_offscreen(self) -> None:
+        """整个窗口都跑到所有屏幕之外时，把它挪回主屏中间。"""
+        geometry = self.geometry()
+        try:
+            screens = QGuiApplication.screens()
+        except Exception:  # noqa: BLE001
+            return
+        if any(geometry.intersects(screen.availableGeometry()) for screen in screens):
+            return
+        area = (QGuiApplication.primaryScreen().availableGeometry()
+                if screens else None)
+        if area is None:
+            return
+        self.move(area.center() - QPoint(self.width() // 2, self.height() // 2))
+        log_event(f"窗口跑出屏幕外，已挪回主屏：{area}")
 
     def _clear_native_title(self) -> None:
         """把 Win32 窗口标题清成空串。
@@ -566,6 +666,8 @@ class FloatingWindow(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        clear_hidden()      # 只要真的显示出来了，就不再算"主动隐藏"
+        self._register_window_handle()
         self._ensure_no_taskbar()
         # setWindowFlag 会重建原生窗口句柄，affinity 会丢，所以每次显示都要重新设置
         self._apply_capture_exclusion()
@@ -580,6 +682,10 @@ class FloatingWindow(QWidget):
         QTimer.singleShot(120, self._force_topmost)
 
     def closeEvent(self, event):
+        # 收到 WM_CLOSE 也算"用户主动退出"（外部 --stop 走的就是这条路），
+        # 必须先落标记：监控进程只认这个标记决定要不要把悬浮窗再拉起来。
+        mark_user_exit()
+        remove_window_handle()   # 窗口没了，句柄登记也要跟着撤
         if self._persist_credentials:
             save_credentials(self.settings)
         super().closeEvent(event)
@@ -589,12 +695,12 @@ class FloatingWindow(QWidget):
         QApplication.quit()
 
     def _show_by_hotkey(self) -> None:
-        self.show()
+        self._self_show()
         self.raise_()
         self._force_topmost()
 
     def _hide_by_hotkey(self) -> None:
-        self.hide()
+        self._self_hide()
 
     # ------------------------------------------------------------------
     # 按钮动作
@@ -642,11 +748,11 @@ class FloatingWindow(QWidget):
                       in tuple(self.settings.browser_processes))
         was_visible = self.isVisible()
         if in_browser and was_visible:
-            self.hide()
+            self._self_hide()
 
         def restore():
             if was_visible:
-                self.show()
+                self._self_show()
                 self.raise_()
 
         def on_done(capture):
@@ -705,6 +811,10 @@ class FloatingWindow(QWidget):
         self._set_status(f"已复制 {len(text)} 字", force=True)
 
     def on_quit(self) -> None:
+        # 悬浮窗的「退出」按钮 / Ctrl+Alt+Q：这是唯一算"用户主动退出"的入口，
+        # 先写标记，监控进程读到它就停止保活（见 runtime.user_exit.flag）。
+        mark_user_exit()
+        remove_window_handle()
         for capture in self._pages:
             capture.cleanup()
         save_credentials(self.settings)

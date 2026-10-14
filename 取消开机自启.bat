@@ -1,13 +1,5 @@
 @echo off
-chcp 65001 >nul
-title å–æ¶ˆå¼€æœºè‡ªå¯
-echo æ­£åœ¨ç§»é™¤å¼€æœºè‡ªå¯é¡¹...
-del /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\å¼€æœºè‡ªå¯.bat" 2>nul
-if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\å¼€æœºè‡ªå¯.bat" (
-  echo [å¤±è´¥] æœªèƒ½åˆ é™¤è‡ªå¯é¡¹ï¼Œè¯·æ£€æŸ¥æƒé™
-) else (
-  echo [å®Œæˆ] å·²å–æ¶ˆå¼€æœºè‡ªå¯
-)
-echo.
-pause
-exit
+title È¡Ïû¿ª»ú×ÔÆô
+echo ÕıÔÚÒÆ³ı¿ª»ú×ÔÆôÏî£¬²¢Í£µôÕıÔÚÔËĞĞµÄ CloudSync ...
+call "%~dp0Ğ¶ÔØ³£×¤.bat"
+exit /b %ERRORLEVEL%

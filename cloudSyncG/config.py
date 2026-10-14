@@ -35,11 +35,15 @@ class Settings:
     height: int = 219                 # 悬浮高
     always_on_top: bool = True
 
-    # ---- 二、模型与 API（写死，取自用户已填好的配置）----
+    # ---- 二、模型与 API ----
+    # 凭据**不再写死**。原来的默认值是一个真实的 API Key，它已经跟着本仓库
+    # 的历史提交公开到了 GitHub，必须视为已泄露：去服务商后台吊销并重签。
+    # 现在这里只留空值，程序从 %APPDATA%\cloudSyncG\settings.json 读取
+    # （api_key 以 DPAPI 密文落盘，只有当前 Windows 账户能解）。
     llm_mode: str = "api"
-    api_base: str = "https://llm-69ai4267tbwdiss6.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
-    api_key: str = "sk-ws-H.PHDYDYM.oUgC.MEUCIBpRihC4ob8BBH74cf8cBb__yCMj6LyBW4rEHJLUPL1GAiEA7V4Oj93Vx-Cuxl-DHZVTxtyq44NgwwOHF3rdkpb-D48"
-    model: str = "qwen3.8-flash"
+    api_base: str = ""
+    api_key: str = ""
+    model: str = ""
     timeout_s: int = 116
     stream: bool = True               # 流式输出
 
@@ -89,6 +93,11 @@ class Settings:
     capture_check_ms: int = 700        # 检测间隔
     # 硬保证：WDA_EXCLUDEFROMCAPTURE，把窗口从系统级捕获里排除
     exclude_from_capture: bool = True
+    # 自动隐藏要不要"从严"：True 时 Steam / 向日葵 / Zoom / ToDesk 这类
+    # 只是**可能**顺便录一下、却几乎一直开着的程序也算作风险，窗口会跟着藏起来。
+    # 默认 False——误藏的代价是"开着某个软件期间悬浮窗一直不出现"，
+    # 而这窗口既不在任务栏也不在托盘，用户根本找不回来。
+    capture_hide_strict: bool = False
 
     # 网页类程序：这些程序在前台时，抓屏瞬间先把自己藏起来，避免被截进去
     browser_processes: tuple = ("chrome", "msedge", "firefox", "brave", "opera")

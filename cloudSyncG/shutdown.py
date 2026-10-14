@@ -15,11 +15,14 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import subprocess
 import sys
 import time
 from ctypes import wintypes
+
+from . import runtime
 
 WINDOW_TITLE = "cloudSyncG"
 PROCESS_TERMINATE = 0x0001
@@ -166,23 +169,21 @@ def _find_by_commandline() -> int:
     光靠 pid 文件就再也定位不到还在跑的实例了——实测踩过这个坑。
 
     条件要够严，避免误杀别人跑的 python：
-      1) 进程名是 python / pythonw
-      2) 命令行里含 cloudSyncG-main.py
+      1) 进程名是 python / pythonw，或者打包后是 CloudSync.exe
+      2) 命令行里含 cloudSyncG-main.py 或 `--worker`
       3) 该进程持有一个**标题为空**的顶层窗口（这正是悬浮窗的专属特征，
          普通 python 程序不会有一个无标题的顶层窗口）
     """
+    exe = runtime.PROCESS_NAME
+    out = _run_hidden(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         "Get-CimInstance Win32_Process -Filter "
+         "\"Name='python.exe' OR Name='pythonw.exe' "
+         f"OR Name='{exe}.exe'\" | "
+         "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
+        15)
     try:
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-             "Get-CimInstance Win32_Process -Filter "
-             "\"Name='python.exe' OR Name='pythonw.exe'\" | "
-             "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
-            capture_output=True, text=True, errors="replace", timeout=15).stdout
-    except Exception:  # noqa: BLE001
-        return 0
-    import json as _json
-    try:
-        rows = _json.loads(out) if out.strip() else []
+        rows = json.loads(out) if out.strip() else []
     except Exception:  # noqa: BLE001
         return 0
     if isinstance(rows, dict):
@@ -191,7 +192,9 @@ def _find_by_commandline() -> int:
     for row in rows:
         cmd = (row.get("CommandLine") or "").lower()
         pid = int(row.get("ProcessId") or 0)
-        if not pid or "cloudSyncG-main.py" not in cmd:
+        if not pid or pid == os.getpid():
+            continue
+        if "cloudSyncG-main.py" not in cmd and "--worker" not in cmd:
             continue
         if _has_titleless_window(pid):
             return pid
@@ -271,6 +274,26 @@ def _terminate(pid: int) -> bool:
         _kernel32.CloseHandle(handle)
 
 
+def stop_supervisor() -> bool:
+    """把监控进程也停掉。
+
+    **顺序很重要**：必须先写"用户主动退出"标记再停监控，否则监控看到
+    子进程没了会立刻把它拉起来，表现为"怎么都关不掉"。
+    返回监控进程是否真的结束了（本来就没在跑也算成功）。
+    """
+    runtime.mark_user_exit()
+    spid = runtime.read_supervisor_pid()
+    runtime.log_event(f"停止监控：读到的监控 pid={spid}")
+    if not spid or not pid_alive(spid):
+        runtime.remove_supervisor_pid()
+        runtime.log_event("监控本来就没在跑")
+        return True
+    _terminate(spid)
+    gone = _wait_gone(spid, 5.0)
+    runtime.log_event(f"监控 pid={spid} 终止{'成功' if gone else '失败'}")
+    return gone
+
+
 def stop() -> bool:
     """优雅关闭，失败则强杀。返回进程是否真的没了。
 
@@ -280,28 +303,39 @@ def stop() -> bool:
     回退强杀时**必须用开头记下的 pid**：应用关闭流程会先删掉 pid 文件，
     此时进程可能还没退完，重新解析会得到 0，于是杀不掉。
     """
+    runtime.mark_user_exit()
     pid = target_pid()
+    runtime.log_event(f"停止悬浮窗：目标 pid={pid or '没找到'}")
     if not pid:
+        stop_supervisor()
+        cleanup()
         return False
     hwnd = find_window()
     if hwnd:
         _user32.PostMessageW(wintypes.HWND(hwnd), WM_CLOSE, 0, 0)
+        runtime.log_event("已发 WM_CLOSE，等它自己退")
         if _wait_gone(pid, 8.0):
+            stop_supervisor()
             cleanup()
             return True
     for _ in range(2):
         _terminate(pid)
         if _wait_gone(pid, 3.0):
+            stop_supervisor()
             cleanup()
             return True
+    stop_supervisor()
     cleanup()
     return False
 
 
 def kill() -> bool:
     """强制结束。"""
+    runtime.mark_user_exit()
     pid = target_pid()
     if not pid:
+        stop_supervisor()
+        cleanup()
         return False
     handle = _kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
     if not handle:
@@ -311,6 +345,7 @@ def kill() -> bool:
     finally:
         _kernel32.CloseHandle(handle)
     if ok:
+        stop_supervisor()
         cleanup()
     return ok
 
@@ -332,33 +367,49 @@ def find_proxy_pids() -> list[int]:
     正常情况下 Job Object 会让代理跟着主程序一起死；但主程序被强杀、
     或 Job 没能生效时就可能留下孤儿。孤儿代理会继续占着连接往上跑，
     所以停止时要顺手清掉。
+
+    分两步是为了**只起一次 powershell**：先按进程名粗筛（纯 Win32，快），
+    再拿候选名单一次性查命令行。早先是对每个候选进程各起一次 WMI 查询，
+    既慢又会在桌面上接连闪黑框。
     """
-    pids: list[int] = []
+    candidates: list[int] = []
     try:
         snapshot = _kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
         if snapshot == -1:
-            return pids
+            return []
         try:
             entry = _PROCESSENTRY32W()
             entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+            exe = runtime.PROCESS_NAME.lower() + ".exe"
             if _kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
                 while True:
-                    if _is_proxy_process(entry.th32ProcessID):
-                        pids.append(entry.th32ProcessID)
+                    name = entry.szExeFile.rsplit("\\", 1)[-1].lower()
+                    if name.endswith(".exe"):
+                        name = name[:-4]
+                    if name.startswith("python") or name == exe:
+                        candidates.append(entry.th32ProcessID)
                     if not _kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
                         break
         finally:
             _kernel32.CloseHandle(snapshot)
     except Exception:  # noqa: BLE001
-        pass
-    return pids
+        return []
+
+    cmdlines = _command_lines_of(candidates)
+    return [pid for pid in candidates
+            if _is_proxy_process(pid, cmdlines.get(pid, ""))]
 
 
-def _is_proxy_process(pid: int) -> bool:
+def _is_proxy_process(pid: int, cmdline: str = "") -> bool:
     """是不是我们的代理进程。
 
-    判据：进程名是 python，且命令行含 `cloudSyncG.proxy`。命令行读不到就宁可漏杀，
-    绝不误杀用户自己跑的其他 python 程序。
+    判据随运行形态而变：
+      - 源码模式：进程名是 python，且命令行含 `cloudSyncG.proxy`
+      - 打包模式：进程名是 CloudSync.exe，且命令行含 `--proxy`
+
+    命令行读不到就宁可漏杀，绝不误杀用户自己跑的其它程序。
+    `cmdline` 由调用方批量传入——一次 WMI 查询拿全部，
+    不要每个候选进程都起一次 powershell（既慢又会闪控制台）。
     """
     handle = _kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
@@ -370,23 +421,69 @@ def _is_proxy_process(pid: int) -> bool:
                                                    ctypes.byref(size)):
             return False
         name = buf.value.rsplit("\\", 1)[-1].lower()
-        if not name.startswith("python"):
+        exe = runtime.PROCESS_NAME.lower() + ".exe"
+        if not (name.startswith("python") or name == exe):
             return False
     finally:
         _kernel32.CloseHandle(handle)
-    return "cloudSyncG.proxy" in _command_line(pid)
+    cmd = (cmdline or _command_line(pid)).lower()
+    if "cloudsync" not in cmd:
+        return False
+    return "--proxy" in cmd or "cloudsyncg.proxy" in cmd
+
+
+def _command_lines_of(pids: "list[int]") -> "dict[int, str]":
+    """一次 WMI 查询拿到多个进程的命令行，避免反复起 powershell。"""
+    if not pids:
+        return {}
+    ids = ",".join(str(p) for p in pids)
+    out = _run_hidden(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         "Get-CimInstance Win32_Process | Where-Object { "
+         f"$_.ProcessId -in @({ids}) }} | "
+         "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"],
+        15)
+    rows: dict[int, str] = {}
+    try:
+        data = json.loads(out) if out.strip() else []
+    except Exception:  # noqa: BLE001
+        return {}
+    if isinstance(data, dict):
+        data = [data]
+    for row in data:
+        try:
+            rows[int(row.get("ProcessId") or 0)] = row.get("CommandLine") or ""
+        except (TypeError, ValueError):
+            continue
+    return rows
+
+
+def _run_hidden(cmd: list[str], timeout: float) -> str:
+    """跑一个子进程，**绝不在桌面上闪出控制台窗口**。
+
+    为什么必须带 CREATE_NO_WINDOW：打包后本程序是无窗口子系统，
+    它自己不会弹黑框，但 `subprocess` 默认继承控制台——从无控制台的父进程
+    启动 `powershell.exe` 时，Windows 会**新建**一个控制台并显示出来。
+    停止流程里正好会连着跑好几次 WMI 查询（清孤儿代理、核对命令行），
+    用户点一下「退出」，屏幕上就接连蹦出几个黑框，像放了个谢幕烟花。
+
+    CREATE_NO_WINDOW 正是为这种场景准备的：跑，但不显示。
+    """
+    try:
+        out = subprocess.run(
+            cmd, capture_output=True, text=True, errors="replace", timeout=timeout,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return out.stdout or ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _command_line(pid: int) -> str:
     """用 WMI 读命令行。读不到就返回空串。"""
-    try:
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
-             f"(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"],
-            capture_output=True, text=True, errors="replace", timeout=10)
-        return out.stdout or ""
-    except Exception:  # noqa: BLE001
-        return ""
+    return _run_hidden(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+         f"(Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\").CommandLine"],
+        10)
 
 
 def kill_orphan_proxies() -> int:

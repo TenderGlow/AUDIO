@@ -24,6 +24,7 @@ import json
 import os
 import socket
 import ssl
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -369,16 +370,31 @@ def spawn_detached(host: str = "127.0.0.1", port: int = 8781):
     """
     import subprocess
     import sys
+    from . import runtime
+
     flags = 0
     if os.name == "nt":
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     job = _make_job_object()
+
+    # 冻成 exe 之后没有 `__main__` 模块可跑，只能让同一个二进制自己
+    # 按 `--proxy` 参数进入代理模式；进程名因此仍然是 CloudSync.exe。
+    if runtime.is_frozen():
+        argv = [sys.executable, "--proxy",
+                "--host", str(host), "--port", str(port),
+                "--parent-pid", str(os.getpid())]
+        cwd = runtime.app_dir()
+    else:
+        argv = [sys.executable, "-u", "-m", "cloudSyncG.proxy",
+                "--host", str(host), "--port", str(port),
+                "--parent-pid", str(os.getpid())]
+        cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    runtime.prime_child_env()
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-u", "-m", "cloudSyncG.proxy",
-             "--host", str(host), "--port", str(port),
-             "--parent-pid", str(os.getpid())],
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            argv,
+            cwd=cwd,
             creationflags=flags,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -410,7 +426,12 @@ def wait_until_ready(base_url: str, timeout: float = 8.0) -> bool:
     return False
 
 
-if __name__ == "__main__":
+def main(argv: "list[str] | None" = None) -> int:
+    """代理进程的入口。
+
+    源码模式是 `python -m cloudSyncG.proxy ...`，打包后是
+    `CloudSync.exe --proxy ...`，两者在这里汇合。
+    """
     import argparse
 
     parser = argparse.ArgumentParser(description="cloudSyncG 本地回环代理")
@@ -418,12 +439,12 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8781)
     parser.add_argument("--parent-pid", type=int, default=0,
                         help="父进程 pid，父进程没了就自行退出")
-    args = parser.parse_args()
+    args = parser.parse_args(sys.argv[1:] if argv is None else list(argv))
 
-    _server = ProxyServer(args.host, args.port)
-    print(f"本地代理已启动：{_server.base_url}  ->  上游 https://{UPSTREAM_HOST}",
+    server = ProxyServer(args.host, args.port)
+    print(f"本地代理已启动：{server.base_url}  ->  上游 https://{UPSTREAM_HOST}",
           flush=True)
-    _server.start()
+    server.start()
 
     # 兜底：即使 Job Object 没生效，也定期检查父进程，父进程没了就退出。
     # 孤儿代理会继续连着上游，留着既浪费连接也说不清楚。
@@ -431,8 +452,12 @@ if __name__ == "__main__":
         while True:
             time.sleep(1.0)
             if args.parent_pid and not _parent_alive(args.parent_pid):
-                _server.stop()
+                server.stop()
                 break
     except KeyboardInterrupt:
-        _server.stop()
-    raise SystemExit(0)
+        server.stop()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

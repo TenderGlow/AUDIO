@@ -2,3 +2,7 @@
 *.pyc
 *.pyo
 .venv/
+
+# PyInstaller 打包产物
+build/
+dist/

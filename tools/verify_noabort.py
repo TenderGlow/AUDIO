@@ -152,9 +152,9 @@ errors6 = []
 import cloudSyncG.floating_window as fw
 real_risk = fw.capture_risk
 try:
-    fw.capture_risk = lambda: (True, "模拟录屏")
+    fw.capture_risk = lambda strict=False: (True, "模拟录屏")
     win._check_capture_risk()
-    fw.capture_risk = lambda: (False, "")
+    fw.capture_risk = lambda strict=False: (False, "")
     win._check_capture_risk()
 except Exception as exc:
     errors6.append(f"{type(exc).__name__} {exc}")
